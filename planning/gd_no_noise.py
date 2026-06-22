@@ -5,7 +5,6 @@ from einops import rearrange
 from .base_planner import BasePlanner
 from utils import move_to_device
 
-
 class GDNoNoisePlanner(BasePlanner):
     def __init__(
         self,
@@ -41,6 +40,7 @@ class GDNoNoisePlanner(BasePlanner):
         self.eval_every = eval_every
         self.logging_prefix = logging_prefix
         self.action_clamp = action_clamp
+
 
     def init_actions(self, obs_0, actions=None):
         """
@@ -107,6 +107,7 @@ class GDNoNoisePlanner(BasePlanner):
                 act=actions,
             )
             loss = self.objective_fn(i_z_obses, z_obs_g_detached, actions)  # (n_evals, )
+
             total_loss = loss.mean() * n_evals  # loss for each eval is independent
             total_loss.backward()
             optimizer.step()

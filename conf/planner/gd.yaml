@@ -9,6 +9,6 @@ eval_every: 10
 var_actions: 0.0
 clip_value: 2.0
 var_states: 0.0
-num_samples: 8
+num_samples: 1
 action_clamp: 0 # clamp value for actions; 0 means no clamping
 name: gd

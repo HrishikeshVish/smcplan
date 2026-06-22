@@ -24,11 +24,11 @@ hydra:
             "export MASTER_PORT=$(for port in $(shuf -i 30000-65500 -n 20); do if [[ $(netstat -tupln 2>&1 | grep $port | wc -l) -eq 0 ]] ; then echo $port; break; fi; done;)",]
 
 # model to load for planning (CKPT_BASE_PATH is set by install.sh --dataset-dir; else defaults to .)
-ckpt_base_path: ${oc.env:CKPT_BASE_PATH,.}
+ckpt_base_path: /scratch/gilbreth/hviswan/grasp/checkpoints
 model_name: null
 model_epoch: latest
 
-seed: 99
+seed: 41
 planner_seed: null  # separate seed for planner initialization (defaults to seed if null)
 n_evals: 10
 goal_source: 'dset' # 'random_state' or 'dset' or 'random_action'

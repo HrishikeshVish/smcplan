@@ -16,6 +16,32 @@ import argparse
 import multiprocessing as mp
 from functools import partial
 
+# def extract_frames_from_video(args):
+#     """Extract all frames from a single video and save as PNG files."""
+#     video_path, output_dir, video_name = args
+#     try:
+#         # Create output directory for this video
+#         video_output_dir = output_dir / video_name
+#         video_output_dir.mkdir(parents=True, exist_ok=True)
+        
+#         # Load video
+#         reader = VideoReader(str(video_path))
+#         num_frames = len(reader)
+        
+#         # Extract each frame
+#         for frame_idx in range(num_frames):
+#             frame = reader[frame_idx]  # Get frame as decord NDArray
+#             frame_np = frame.asnumpy()  # Convert to numpy array (H, W, C)
+            
+#             # Convert to PIL Image and save
+#             frame_pil = Image.fromarray(frame_np)
+#             frame_path = video_output_dir / f"frame_{frame_idx:03d}.png"
+#             frame_pil.save(frame_path)
+        
+#         return (video_name, num_frames, True)
+        
+#     except Exception as e:
+#         return (video_name, 0, False, str(e))
 def extract_frames_from_video(args):
     """Extract all frames from a single video and save as PNG files."""
     video_path, output_dir, video_name = args
@@ -28,14 +54,24 @@ def extract_frames_from_video(args):
         reader = VideoReader(str(video_path))
         num_frames = len(reader)
         
+        # Fast check: if all frames are already extracted, skip entirely
+        existing_frames = len(list(video_output_dir.glob("frame_*.png")))
+        if existing_frames == num_frames:
+            return (video_name, num_frames, True)
+        
         # Extract each frame
         for frame_idx in range(num_frames):
+            frame_path = video_output_dir / f"frame_{frame_idx:03d}.png"
+            
+            # Skip this specific frame if it already exists (handles partial crashes)
+            if frame_path.exists():
+                continue
+                
             frame = reader[frame_idx]  # Get frame as decord NDArray
             frame_np = frame.asnumpy()  # Convert to numpy array (H, W, C)
             
             # Convert to PIL Image and save
             frame_pil = Image.fromarray(frame_np)
-            frame_path = video_output_dir / f"frame_{frame_idx:03d}.png"
             frame_pil.save(frame_path)
         
         return (video_name, num_frames, True)
@@ -104,17 +140,17 @@ def process_episode_folder(input_folder, output_folder, split_name, num_processe
 def main():
     parser = argparse.ArgumentParser(description="Extract frames from PushT video episodes")
     parser.add_argument("--input-train", 
-                       default="/checkpoint/amaia/video/basileterv/dino_wm/data/pusht_noise/train/obses/",
+                       default="/scratch/gilbreth/hviswan/grasp/data/pusht_noise/train/obses",
                        help="Input folder for train videos")
     parser.add_argument("--input-val", 
-                       default="/checkpoint/amaia/video/basileterv/dino_wm/data/pusht_noise/val/obses/",
+                       default="/scratch/gilbreth/hviswan/grasp/data/pusht_noise/val/obses",
                        help="Input folder for val videos")
     parser.add_argument("--output", 
-                       default="/checkpoint/amaia/video/amirbar/datasets/pusht",
+                       default="/scratch/gilbreth/hviswan/grasp/data/pusht_noise/",
                        help="Output folder for extracted frames")
     parser.add_argument("--split", 
                        choices=["train", "val", "both"], 
-                       default="both",
+                       default="val",
                        help="Which split to process")
     parser.add_argument("--num-processes", 
                        type=int, 

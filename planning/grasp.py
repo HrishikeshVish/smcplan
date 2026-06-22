@@ -43,6 +43,8 @@ except ImportError:
     BallNavOptimizationVisualizer = None
 
 
+
+
 class GRASPPlanner(BasePlanner):
     """Gradient-based planner operating in the world-model latent space.
 
@@ -211,6 +213,8 @@ class GRASPPlanner(BasePlanner):
             except Exception as e:
                 print(f"Warning: Failed to apply torch.compile to rollout_encoded: {e}")
                 print("Continuing with regular rollout_encoded method")
+        
+        
 
 
 
@@ -943,6 +947,7 @@ class GRASPPlanner(BasePlanner):
         # f_next_state_list dim: B, N, H*W, C
         # goal_loss = self.gamma_goal*((f_next_state[:, [-1], ...] - z_obs_g) ** 2).sum(dim=-1).mean()
         goal_loss=torch.tensor([0], device=self.device)
+
         dynamics_loss = gamma_dynamics*(f_next_state - z_state[:,1:,...]).pow(2).sum(dim=-1).mean()
         dynamics_loss_last = (f_next_state[:,-1] - z_state[:,-1]).pow(2).mean()
         # Geometric scaling: weight each timestep by gamma^(T-i) where i is the time index
@@ -1153,10 +1158,12 @@ class GRASPPlanner(BasePlanner):
 
                     z0_input = z0_virtual if self.enable_state_gradient else z0_virtual.detach()
 
-                    _, i_z_obses = self.wm.rollout_encoded(
+                    i_z_separate, i_z_obses = self.wm.rollout_encoded(
                         z0_input,
                         action_samples_flat
                     )
+
+
 
                     f_next_state = i_z_obses[:, [-1]][..., : -self.wm.action_dim].view(n_evals, self.num_virtual_states+1, *z_state_expanded.shape[2:])
 

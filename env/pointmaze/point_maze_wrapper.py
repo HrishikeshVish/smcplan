@@ -51,6 +51,7 @@ class PointMazeWrapper(MazeEnv):
         return {
             'success': success,
             'state_dist': state_dist,
+            'vis_dist': np.linalg.norm(goal_state[:2] - cur_state[:2])
         }
 
     def prepare(self, seed, init_state):

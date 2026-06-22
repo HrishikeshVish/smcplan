@@ -43,6 +43,8 @@ from planning.ballnav_evaluator import BallNavEvaluator
 from planning.random_mlp_evaluator import RandomMlpEvaluator
 from utils import cfg_to_dict, seed
 
+os.environ.setdefault("DATASET_DIR", "/scratch/gilbreth/hviswan/grasp/data")
+
 log = logging.getLogger(__name__)
 
 
@@ -234,10 +236,11 @@ class PlanWorkspace:
 
         # Have different seeds for each planning instance
         self.eval_seed = [
-            self.cfg_dict["seed"] * self.cfg_dict["n_evals"] + n
+            self.cfg_dict["seed"] * n + 1
             for n in range(self.cfg_dict["n_evals"])
         ]
         log.info("eval_seed: %s", self.eval_seed)
+        log.info("CFG SEED: %s", self.cfg_dict["seed"])
         self.n_evals = self.cfg_dict["n_evals"]
         self.goal_source = self.cfg_dict["goal_source"]
         self.goal_H = self.cfg_dict["goal_H"]
@@ -901,7 +904,7 @@ def main(cfg: OmegaConf):
         cfg["saved_folder"] = os.getcwd()
         log.info(f"Planning result saved dir: {cfg['saved_folder']}")
     cfg_dict = cfg_to_dict(cfg)
-    cfg_dict["wandb_logging"] = True
+    cfg_dict["wandb_logging"] = False
     planning_main(cfg_dict)
 
 

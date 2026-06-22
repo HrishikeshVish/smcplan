@@ -4,7 +4,7 @@ import numpy as np
 from einops import rearrange, repeat
 from .base_planner import BasePlanner
 from utils import move_to_device
-
+import os
 
 class CEMPlanner(BasePlanner):
     def __init__(
@@ -76,7 +76,9 @@ class CEMPlanner(BasePlanner):
         mu, sigma = self.init_mu_sigma(obs_0, actions)
         mu, sigma = mu.to(self.device), sigma.to(self.device)
         n_evals = mu.shape[0]
-
+        max_success_rate = 0.0
+        best_dist = np.inf
+        best_vis_dist = np.inf
         total_measured_time = 0.0
         exit_step = self.opt_steps  # Default to max steps if no early exit
 
@@ -140,6 +142,18 @@ class CEMPlanner(BasePlanner):
                 logs, successes, _, _ = self.evaluator.eval_actions(
                     mu, filename=f"{self.logging_prefix}_output_{i+1}"
                 )
+                current_success = float(successes.mean())
+                if current_success > max_success_rate:
+                    max_success_rate = current_success
+                mean_dist = logs.get('mean_state_dist')
+                mean_vis_dist = logs.get('mean_visual_dist')
+                mean_dist = logs.get('mean_state_dist')
+                mean_vis_dist = logs.get('mean_visual_dist')
+                mean_proprio_dist = logs.get('mean_proprio_dist')
+                if mean_dist < best_dist and current_success >= max_success_rate:
+                    best_dist = mean_dist
+                if mean_vis_dist < best_vis_dist and current_success >= max_success_rate:
+                    best_vis_dist = mean_vis_dist
                 self.wandb_run.log(
                     {f"{self.logging_prefix}/loss": np.mean(losses), "step": i + 1,
                     f"{self.logging_prefix}/act_norm": mu.norm(dim=-1).mean().item(),
@@ -163,5 +177,13 @@ class CEMPlanner(BasePlanner):
         # Store planning stats for access by plan.py
         self.exit_step = exit_step
         self.total_measured_time = total_measured_time
+        task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
+        if task_id is not None:
+            log_filename = f"seed_success_chunk_{task_id}.txt"
+        else:
+            log_filename = "seed_success_log.txt"
+        with open(f"/scratch/gilbreth/hviswan/grasp/{log_filename}", "a") as f:
+           f.write(f"{current_success} {mean_dist} {mean_vis_dist} {mean_proprio_dist} {i}\n")
+        # ------------------------------------------
 
         return mu, np.full(n_evals, np.inf)  # all actions are valid
