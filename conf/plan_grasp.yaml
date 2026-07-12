@@ -32,7 +32,7 @@ seed: 42
 planner_seed: null  # separate seed for planner initialization (defaults to seed if null)
 n_evals: 50
 goal_source: 'dset' # 'random_state' or 'dset' or 'random_action'
-goal_H: 25 # specifies how far away the goal is if goal_source is 'dset' (le-wm: goal_offset_steps=25)
+goal_H: 5 # in world-model steps; with frameskip=5 this is 25 raw steps (le-wm goal_offset_steps=25)
 n_plot_samples: 10
 
 debug_dset_init: False
