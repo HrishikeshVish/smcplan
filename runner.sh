@@ -6,11 +6,11 @@ LOG_FILE="seed_success_log.txt"
 # Clear the log file if it exists from a previous run
 > "$LOG_FILE"
 
-echo "Starting evaluation across 100 seeds..."
+echo "Starting evaluation across 200 seeds..."
 echo "---------------------------------------"
 
 # Loop through seeds 1 to 100
-for seed in {1..100}; do
+for seed in {100..200}; do
     echo "Running Seed: $seed..."
     
     # Run the python script

@@ -605,86 +605,87 @@ class GDPlanner(BasePlanner):
                 for key, arr in trans_obs_0.items()
             }
 
-            # ---------------------------------------------------------
-            # 2. LANGEVIN NOISE SHAPING (DECOUPLED GRAPH)
-            # ---------------------------------------------------------
-            guided_actions = base_noisy_actions.clone()
-            velocity = torch.zeros_like(guided_actions)
-            anchor_actions = actions.unsqueeze(0).detach().flatten(0, 1)
-            num_langevin_steps = 10  # Keep this low in a GD planner (3-5 is usually enough)
-            #alpha_base = 0.001
-            #gamma = 1e-3
-            alpha_base = 1e-1
-            gamma = 1e-2
-            trust_radius = 0.2
+            # # ---------------------------------------------------------
+            # # 2. LANGEVIN NOISE SHAPING (DECOUPLED GRAPH)
+            # # ---------------------------------------------------------
+            # guided_actions = base_noisy_actions.clone()
+            # velocity = torch.zeros_like(guided_actions)
+            # anchor_actions = actions.unsqueeze(0).detach().flatten(0, 1)
+            # num_langevin_steps = 10  # Keep this low in a GD planner (3-5 is usually enough)
+            # alpha_base = 0.001 # POINT MAZE Hyperparams
+            # gamma = 1e-3 # POINT MAZE Hyperparams
+            # #alpha_base = 1e-1 # PUSHT Hyperparams
+            # #gamma = 1e-2 # PUSHT Hyperparams
+            # trust_radius = 0.2
 
-            with torch.enable_grad():
-                for k in range(num_langevin_steps):
-                    guided_actions.requires_grad_(True)
+            # with torch.enable_grad():
+            #     for k in range(num_langevin_steps):
+            #         guided_actions.requires_grad_(True)
                     
-                    # Forward Pass (Local to Langevin)
-                    i_z_obses_lang, _ = self.wm.rollout(obs_0=obs_batch_langevin, act=guided_actions)
+            #         # Forward Pass (Local to Langevin)
+            #         i_z_obses_lang, _ = self.wm.rollout(obs_0=obs_batch_langevin, act=guided_actions)
                     
-                    # Objective Calculation (Using only terminal state to save memory)
-                    terminal_10d_latent = i_z_obses_lang["proprio"][:, -1, :].float()
-                    v_val = self.latent_hjb_solver.evaluate_rollout(terminal_10d_latent)
+            #         # Objective Calculation (Using only terminal state to save memory)
+            #         terminal_10d_latent = i_z_obses_lang["proprio"][:, -1, :].float()
+            #         v_val = self.latent_hjb_solver.evaluate_rollout(terminal_10d_latent)
                     
-                    # Standard sum to maintain gradient scale
-                    objective_hjb = -v_val.sum()
+            #         # Standard sum to maintain gradient scale
+            #         objective_hjb = -v_val.sum()
                     
-                    # Local Backward Pass
-                    grad_action = torch.autograd.grad(
-                        objective_hjb,
-                        guided_actions,
-                        retain_graph=False,
-                        create_graph=False,
-                    )[0]
-                    #print("Grad action Norm before clamp:", grad_action.norm().item())
+            #         # Local Backward Pass
+            #         grad_action = torch.autograd.grad(
+            #             objective_hjb,
+            #             guided_actions,
+            #             retain_graph=False,
+            #             create_graph=False,
+            #         )[0]
+            #         #print("Grad action Norm before clamp:", grad_action.norm().item())
                     
-                    #grad_action = torch.clamp(grad_action, min=-1.0, max=1.0)
+            #         #grad_action = torch.clamp(grad_action, min=-1.0, max=1.0)
                     
-                    # Update and strictly detach to destroy the graph
-                    with torch.no_grad():
-                        if prev_grad_action is None:
-                            # First step: Assume neutral confidence (0.5)
-                            confidence = torch.full(
-                                (grad_action.shape[0], 1, 1), 
-                                0.5, 
-                                device=grad_action.device
-                            )
-                        else:
-                            # Subsequent steps: Use the previous gradient's confidence
-                            flat_curr = grad_action.flatten(1)
-                            flat_prev = prev_grad_action.flatten(1)
-                            cos_sim = torch.nn.functional.cosine_similarity(flat_curr, flat_prev, dim=-1)
-                            confidence = torch.sigmoid((cos_sim + 1.0) / 2.0)
-                            confidence = confidence.view(-1, 1, 1)
-                        prev_grad_action = grad_action.clone()
+            #         # Update and strictly detach to destroy the graph
+            #         with torch.no_grad():
+            #             if prev_grad_action is None:
+            #                 # First step: Assume neutral confidence (0.5)
+            #                 confidence = torch.full(
+            #                     (grad_action.shape[0], 1, 1), 
+            #                     0.5, 
+            #                     device=grad_action.device
+            #                 )
+            #             else:
+            #                 # Subsequent steps: Use the previous gradient's confidence
+            #                 flat_curr = grad_action.flatten(1)
+            #                 flat_prev = prev_grad_action.flatten(1)
+            #                 cos_sim = torch.nn.functional.cosine_similarity(flat_curr, flat_prev, dim=-1)
+            #                 confidence = torch.sigmoid((cos_sim + 1.0) / 2.0)
+            #                 confidence = confidence.view(-1, 1, 1)
+            #             prev_grad_action = grad_action.clone()
                         
-                        dt = alpha_base / np.sqrt(k + 1)
-                        tau = 1.0
-                        grad_norm = grad_action.norm(dim=-1, keepdim=True)
-                        scale = torch.minimum(torch.ones_like(grad_norm), 1.0 / (grad_norm + 1e-8))
+            #             dt = alpha_base / np.sqrt(k + 1)
+            #             tau = 1.0
+            #             grad_norm = grad_action.norm(dim=-1, keepdim=True)
+            #             scale = torch.minimum(torch.ones_like(grad_norm), 1.0 / (grad_norm + 1e-8))
                         
-                        #print("Confidence: ", confidence.mean().item())
-                        drift = grad_action*scale
-                        dt_tensor = torch.tensor(dt, device=grad_action.device)
-                        gamma_tensor = torch.tensor(gamma, device=grad_action.device)
-                        friction_decay = torch.exp(-gamma_tensor * dt_tensor)
-                        noise_variance = decay_factor * (1.0 - torch.exp(-2.0 * gamma_tensor * dt_tensor))
-                        diffusion = torch.sqrt(noise_variance) * torch.randn_like(guided_actions)
-                        velocity = (friction_decay) * velocity + dt* drift + diffusion
-                        guided_actions = (guided_actions + velocity*dt).detach()
-            # ---------------------------------------------------------
-            # 3. REPARAMETERIZATION TRICK (RE-ATTACH TO MAIN GRAPH)
-            # ---------------------------------------------------------
-            # We figure out exactly what noise the Langevin process effectively added
-            eps_refined = guided_actions.view(self.num_samples, actions.shape[0], actions.shape[1], actions.shape[2]) - actions.unsqueeze(0).detach()
+            #             #print("Confidence: ", confidence.mean().item())
+            #             drift = grad_action*scale
+            #             dt_tensor = torch.tensor(dt, device=grad_action.device)
+            #             gamma_tensor = torch.tensor(gamma, device=grad_action.device)
+            #             friction_decay = torch.exp(-gamma_tensor * dt_tensor)
+            #             noise_variance = decay_factor * (1.0 - torch.exp(-2.0 * gamma_tensor * dt_tensor))
+            #             diffusion = torch.sqrt(noise_variance) * torch.randn_like(guided_actions)
+            #             velocity = (friction_decay) * velocity + dt* drift + diffusion
+            #             guided_actions = (guided_actions + velocity*dt).detach()
+            # # ---------------------------------------------------------
+            # # 3. REPARAMETERIZATION TRICK (RE-ATTACH TO MAIN GRAPH)
+            # # ---------------------------------------------------------
+            # # We figure out exactly what noise the Langevin process effectively added
+            # eps_refined = guided_actions.view(self.num_samples, actions.shape[0], actions.shape[1], actions.shape[2]) - actions.unsqueeze(0).detach()
             
-            # Re-attach to the main 'actions' parameter so Adam gets the gradients
-            final_noisy_actions = (actions.unsqueeze(0) + eps_refined.detach()).flatten(0, 1)
-            #final_noisy_actions = torch.tanh(final_noisy_actions)
-            #final_noisy_actions = (actions.unsqueeze(0) + eps).flatten(0, 1)
+            # # Re-attach to the main 'actions' parameter so Adam gets the gradients
+            # final_noisy_actions = (actions.unsqueeze(0) + eps_refined.detach()).flatten(0, 1)
+            # final_noisy_actions = torch.tanh(final_noisy_actions)
+
+            final_noisy_actions = (actions.unsqueeze(0) + eps).flatten(0, 1)
 
             # ---------------------------------------------------------
             # 4. MAIN PDE GRAPH SUPERVISION & BACKPROP
@@ -700,6 +701,14 @@ class GDPlanner(BasePlanner):
             
             # Execute your standard loss calculations
             loss = self.objective_fn(i_z_obses, z_obs_g_detached, final_noisy_actions)
+            terminal_10d_latent = i_z_obses["proprio"][:, -1, :].float()
+            v_val = self.latent_hjb_solver.evaluate_rollout(terminal_10d_latent)
+            #tau = 0.1 Pointmaze hyperparams
+            tau = 0.1 # Pusht hyperparams
+            v_val = (torch.logsumexp(v_val / tau, dim=0)) * tau  # LogSumExp for stability
+            loss = loss + tau * v_val.mean()  # Minimize the value function at the terminal state
+            #loss = -v_val.min()  # Minimize the value function at the terminal state
+            print(f"Step {i + 1} | MSE Loss: {loss.item():.4f} | Metric Value: {v_val.mean().item():.4f} | Metric Min Value: {v_val.min().item():.4f} | Metric Max Value: {v_val.max().item():.4f}")
             base_loss = self.objective_fn(i_z_obses_base, z_obs_g_detached, base_noisy_actions)
             improvement = base_loss.item() - loss.item()
             # print(f"\n[Outer Opt Step {i}/{self.opt_steps}]")

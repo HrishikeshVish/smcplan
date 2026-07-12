@@ -623,7 +623,7 @@ def load_ckpt(snapshot_path, device):
         log.warning(f"Could not pre-load vjepav2 from torch.hub: {e}")
 
     with snapshot_path.open("rb") as f:
-        payload = torch.load(f, map_location=device)
+        payload = torch.load(f, map_location=device, weights_only=False)
     loaded_keys = []
     result = {}
     for k, v in payload.items():
