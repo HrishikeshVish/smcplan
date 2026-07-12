@@ -14,13 +14,17 @@ dataset:
 
 # Env (used for rollout evaluation)
 env_name: swm/OGBCube-v0
-max_episode_steps: 100
+max_episode_steps: 50
 image_size: 224
 
 # LeWM config
 history_size: 3
 action_dim: 10
 proprio_dim: 0
+
+# Eval config (matching le-wm)
+goal_offset_steps: 25
+eval_budget: 50
 
 decoder_path: null
 num_workers: 4
