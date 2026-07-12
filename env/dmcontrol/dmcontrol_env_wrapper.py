@@ -171,6 +171,21 @@ class DMControlEnvWrapper:
         }
         return obs_dict, states
 
+    def eval_state(self, goal_state, cur_state):
+        """Evaluate whether the current state has reached the goal.
+
+        Uses qpos distance (same as le-wm evaluation).
+        """
+        state_dist = np.linalg.norm(goal_state - cur_state)
+        # For reacher: qpos is the first half of state
+        n_qpos = len(goal_state) // 2
+        qpos_dist = np.linalg.norm(goal_state[:n_qpos] - cur_state[:n_qpos])
+        success = qpos_dist < 0.5
+        return {
+            'success': success,
+            'state_dist': state_dist,
+        }
+
     def update_env(self, env_info):
         """No-op for DMControl."""
         pass
