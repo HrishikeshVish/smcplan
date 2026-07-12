@@ -96,6 +96,7 @@ def main():
     parser.add_argument("--output-path", default=None, help="Output .pt path (auto-generated if not set)")
     parser.add_argument("--max-episodes", type=int, default=None, help="Max episodes to encode (default: all)")
     parser.add_argument("--latent-key", default="proprio", help="Latent key for DINO-WM: proprio or visual")
+    parser.add_argument("--pca-dim", type=int, default=None, help="Reduce latent dim with PCA (e.g. 10). None = no PCA.")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -195,6 +196,29 @@ def main():
     print(f"Total transitions: {z_curr.shape[0]}, latent_dim: {z_curr.shape[1]}")
 
     buffer = {"z_curr": z_curr, "z_next": z_next}
+
+    # Optional PCA reduction
+    if args.pca_dim is not None and args.pca_dim < z_curr.shape[1]:
+        from sklearn.decomposition import PCA
+        pca_dim = args.pca_dim
+        print(f"Fitting PCA: {z_curr.shape[1]} -> {pca_dim} dims...")
+
+        all_z = torch.cat([z_curr, z_next], dim=0).numpy()
+        pca = PCA(n_components=pca_dim)
+        pca.fit(all_z)
+        explained = pca.explained_variance_ratio_.sum() * 100
+        print(f"  Explained variance: {explained:.1f}%")
+
+        z_curr_pca = torch.from_numpy(pca.transform(z_curr.numpy())).float()
+        z_next_pca = torch.from_numpy(pca.transform(z_next.numpy())).float()
+
+        # Save PCA components so gd.py can project rollouts at planning time
+        buffer["z_curr"] = z_curr_pca
+        buffer["z_next"] = z_next_pca
+        buffer["pca_components"] = torch.from_numpy(pca.components_).float()    # (pca_dim, D)
+        buffer["pca_mean"] = torch.from_numpy(pca.mean_).float()                # (D,)
+        print(f"  Reduced: {z_curr.shape[1]} -> {pca_dim}")
+
     os.makedirs(os.path.dirname(args.output_path) or ".", exist_ok=True)
     torch.save(buffer, args.output_path)
     print(f"Saved replay buffer to {args.output_path}")

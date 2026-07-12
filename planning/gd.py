@@ -271,11 +271,14 @@ class LatentDynamicalHJB:
 
 
 def _load_replay_buffer(path, device):
-    """Load a latent replay buffer and return (z_curr_np, z_next_np).
+    """Load a latent replay buffer and return (z_curr_np, z_next_np, pca_info).
 
     Supports two formats:
       - New format: {'z_curr': (N, D), 'z_next': (N, D)}
       - Legacy format: {'z_buffer': (B, T, D)} (derives curr/next from episodes)
+
+    If the buffer contains PCA components, returns them as pca_info dict
+    so the planner can project rollout latents into PCA space at planning time.
     """
     loaded = torch.load(path, map_location='cpu', weights_only=True)
 
@@ -292,7 +295,14 @@ def _load_replay_buffer(path, device):
             f"Expected 'z_curr'/'z_next' or 'z_buffer'."
         )
 
-    return z_curr.numpy(), z_next.numpy()
+    pca_info = None
+    if 'pca_components' in loaded:
+        pca_info = {
+            'components': loaded['pca_components'].to(device),  # (pca_dim, D)
+            'mean': loaded['pca_mean'].to(device),              # (D,)
+        }
+
+    return z_curr.numpy(), z_next.numpy(), pca_info
 
 
 class GDPlanner(BasePlanner):
@@ -355,7 +365,10 @@ class GDPlanner(BasePlanner):
             )
 
         print(f"Loading replay buffer from {replay_buffer_path}...")
-        z_buffer_np, z_next_gt_np = _load_replay_buffer(replay_buffer_path, self.device)
+        z_buffer_np, z_next_gt_np, pca_info = _load_replay_buffer(replay_buffer_path, self.device)
+        self.pca_info = pca_info
+        if pca_info is not None:
+            print(f"  PCA projection enabled: {pca_info['mean'].shape[0]} -> {pca_info['components'].shape[0]} dims")
         print(f"  Loaded {z_buffer_np.shape[0]} transitions, latent_dim={z_buffer_np.shape[1]}")
 
         self.latent_hjb_solver = LatentDynamicalHJB(
@@ -382,6 +395,12 @@ class GDPlanner(BasePlanner):
         # Pool patch dimension if present (e.g. visual: B, T, num_patches, D)
         if latent.dim() == 4:
             latent = latent.mean(dim=2)  # (B, T, D)
+        # Apply PCA projection if buffer was built with --pca-dim
+        if self.pca_info is not None:
+            shape = latent.shape  # (B, T, D_orig)
+            flat = latent.reshape(-1, shape[-1])  # (B*T, D_orig)
+            flat = (flat - self.pca_info['mean']) @ self.pca_info['components'].T  # (B*T, pca_dim)
+            latent = flat.reshape(*shape[:-1], -1)  # (B, T, pca_dim)
         return latent
 
     def init_actions(self, obs_0, actions=None):

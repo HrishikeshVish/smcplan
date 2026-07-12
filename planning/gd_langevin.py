@@ -91,7 +91,10 @@ class GDLangevinPlanner(BasePlanner):
             )
 
         print(f"Loading replay buffer from {replay_buffer_path}...")
-        z_buffer_np, z_next_gt_np = _load_replay_buffer(replay_buffer_path, self.device)
+        z_buffer_np, z_next_gt_np, pca_info = _load_replay_buffer(replay_buffer_path, self.device)
+        self.pca_info = pca_info
+        if pca_info is not None:
+            print(f"  PCA projection enabled: {pca_info['mean'].shape[0]} -> {pca_info['components'].shape[0]} dims")
         print(f"  Loaded {z_buffer_np.shape[0]} transitions, latent_dim={z_buffer_np.shape[1]}")
 
         self.latent_hjb_solver = LatentDynamicalHJB(
@@ -116,6 +119,11 @@ class GDLangevinPlanner(BasePlanner):
         latent = z_obses[self.latent_key].float()
         if latent.dim() == 4:
             latent = latent.mean(dim=2)
+        if self.pca_info is not None:
+            shape = latent.shape
+            flat = latent.reshape(-1, shape[-1])
+            flat = (flat - self.pca_info['mean']) @ self.pca_info['components'].T
+            latent = flat.reshape(*shape[:-1], -1)
         return latent
 
     def init_actions(self, obs_0, actions=None):
