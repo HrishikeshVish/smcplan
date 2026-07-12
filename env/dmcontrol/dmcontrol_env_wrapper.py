@@ -118,24 +118,24 @@ class DMControlEnvWrapper:
         all_states = []
 
         for i, env in enumerate(self.envs):
-            env.reset(seed=int(seeds[i]) if seeds[i] is not None else None)
+            obs, _ = env.reset(seed=int(seeds[i]) if seeds[i] is not None else None)
 
             # Set state if available
-            if init_states is not None and hasattr(env.unwrapped, 'set_state'):
+            if init_states is not None:
                 self._set_env_state(env, init_states[i])
 
             # Collect initial observation
             img = env.render()
             ep_visuals = [img]
-            obs = env.unwrapped._get_obs() if hasattr(env.unwrapped, '_get_obs') else np.zeros(0)
-            ep_proprios = [obs if isinstance(obs, np.ndarray) else np.zeros(0)]
+            init_obs = obs if isinstance(obs, np.ndarray) else np.zeros(0)
+            ep_proprios = [init_obs]
             ep_states = [self._get_env_state(env)]
 
             for t in range(n_steps):
                 obs, reward, terminated, truncated, info = env.step(actions[i, t])
                 img = env.render()
                 ep_visuals.append(img)
-                ep_proprios.append(obs if isinstance(obs, np.ndarray) else np.zeros(0))
+                ep_proprios.append(obs if isinstance(obs, np.ndarray) else init_obs)
                 ep_states.append(self._get_env_state(env))
 
             all_visuals.append(np.stack(ep_visuals))
@@ -158,11 +158,10 @@ class DMControlEnvWrapper:
         visuals = []
         proprios = []
         for i, env in enumerate(self.envs):
-            env.reset(seed=int(seeds[i]) if seeds[i] is not None else None)
+            obs, _ = env.reset(seed=int(seeds[i]) if seeds[i] is not None else None)
             if states is not None:
                 self._set_env_state(env, states[i])
             img = env.render()
-            obs = env.unwrapped._get_obs() if hasattr(env.unwrapped, '_get_obs') else np.zeros(0)
             visuals.append(img)
             proprios.append(obs if isinstance(obs, np.ndarray) else np.zeros(0))
 
