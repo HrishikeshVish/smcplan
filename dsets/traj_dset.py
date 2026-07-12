@@ -9,9 +9,13 @@ from einops import rearrange
 
 
 class Subset(_Subset):
+    def __init__(self, dataset, indices):
+        # Bypass _Subset.__init__ to avoid __getitems__ check in newer PyTorch
+        self.dataset = dataset
+        self.indices = indices
+
     def __getitem__(self, idx, start=0, end=None, frameskip=1):
         if isinstance(idx, list):
-            # return self.dataset[[self.indices[i] for i in idx]]
             raise NotImplementedError
         _idx = self.indices[idx]
         if end is None:
@@ -20,6 +24,9 @@ class Subset(_Subset):
 
     def __getitems__(self, indices):
         return [self.__getitem__(idx) for idx in indices]
+
+    def __len__(self):
+        return len(self.indices)
 
 # https://github.com/JaidedAI/EasyOCR/issues/1243
 def _accumulate(iterable, fn=lambda x, y: x + y):
