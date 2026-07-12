@@ -1,0 +1,26 @@
+name: lewm_cube
+
+# LeWM checkpoint path (relative to STABLEWM_HOME or absolute)
+lewm_checkpoint: cube/lewm
+
+# Dataset
+dataset:
+  _target_: dsets.dmcontrol_dset.load_dmcontrol_dataset
+  data_path: ${oc.env:STABLEWM_HOME}/ogbench/cube_single_expert.h5
+  num_hist: 3
+  num_pred: 1
+  frameskip: 5
+  img_size: 224
+
+# Env (used for rollout evaluation)
+env_name: swm/OGBCube-v0
+max_episode_steps: 100
+image_size: 224
+
+# LeWM config
+history_size: 3
+action_dim: 10
+proprio_dim: 0
+
+decoder_path: null
+num_workers: 4

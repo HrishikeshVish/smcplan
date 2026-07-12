@@ -43,6 +43,9 @@ from planning.ballnav_evaluator import BallNavEvaluator
 from planning.random_mlp_evaluator import RandomMlpEvaluator
 from utils import cfg_to_dict, seed
 
+# LeWM support
+ALL_LEWM_ENVS = ["lewm_reacher", "lewm_cube"]
+
 os.environ.setdefault("DATASET_DIR", "/scratch/gilbreth/hviswan/grasp/data")
 
 log = logging.getLogger(__name__)
@@ -745,6 +748,61 @@ def load_model(model_ckpt, train_cfg, num_action_repeat, device):
     return model
 
 
+def load_lewm_model(env_cfg, device):
+    """Load a LeWM JEPA model and wrap it for grasp_langevin planners.
+
+    Args:
+        env_cfg: OmegaConf config with lewm_checkpoint, history_size, action_dim, etc.
+        device: torch device
+
+    Returns:
+        LeWMWorldModel wrapping the loaded JEPA checkpoint
+    """
+    import json
+    from pathlib import Path
+    from hydra.utils import instantiate
+    from omegaconf import OmegaConf as OC
+    from models.lewm_world_model import LeWMWorldModel
+
+    cache_dir = os.environ.get("STABLEWM_HOME", os.path.expanduser("~/.stable_worldmodel"))
+    ckpt_path = Path(cache_dir) / env_cfg.lewm_checkpoint
+
+    # Try loading as serialized object first
+    object_ckpt = ckpt_path / "lewm_object.ckpt"
+    if object_ckpt.exists():
+        log.info(f"Loading LeWM from serialized object: {object_ckpt}")
+        jepa_model = torch.load(object_ckpt, map_location=device, weights_only=False)
+    else:
+        # Load from weights.pt + config.json
+        config_path = ckpt_path / "config.json"
+        weights_path = ckpt_path / "weights.pt"
+        if not config_path.exists() or not weights_path.exists():
+            raise FileNotFoundError(
+                f"LeWM checkpoint not found at {ckpt_path}. "
+                f"Expected either lewm_object.ckpt or (config.json + weights.pt)"
+            )
+        log.info(f"Loading LeWM from config + weights: {ckpt_path}")
+        cfg_model = json.loads(config_path.read_text())
+        jepa_model = instantiate(OC.create(cfg_model))
+        sd = torch.load(weights_path, map_location=device, weights_only=False)
+        jepa_model.load_state_dict(sd, strict=True)
+
+    jepa_model = jepa_model.to(device)
+    jepa_model.eval()
+    jepa_model.requires_grad_(False)
+
+    model = LeWMWorldModel(
+        jepa_model=jepa_model,
+        history_size=env_cfg.get("history_size", 3),
+        frameskip=env_cfg.get("frameskip", 5) if hasattr(env_cfg, "frameskip") else 5,
+        action_dim=env_cfg.get("action_dim", 2),
+        proprio_dim=env_cfg.get("proprio_dim", 0),
+        image_size=env_cfg.get("image_size", 224),
+    )
+    model.to(device)
+    return model
+
+
 class DummyWandbRun:
     def __init__(self):
         self.mode = "disabled"
@@ -777,6 +835,9 @@ def planning_main(cfg_dict):
 
     model_name = cfg_dict['model_name']
 
+    # Check if this is a LeWM model
+    is_lewm = model_name in ALL_LEWM_ENVS or model_name.startswith("lewm_")
+
     # Special handling for ballnav and random_mlp - they don't have trained models
     if model_name == "ballnav" or model_name == "random_mlp":
         # Load configuration directly from environment config file
@@ -796,6 +857,24 @@ def planning_main(cfg_dict):
             "has_decoder": False,
             "has_predictor": False,
         })
+    elif is_lewm:
+        # LeWM model - load env config
+        env_name = model_name.replace("lewm_", "") if model_name.startswith("lewm_") else model_name
+        base_path = os.path.dirname(os.path.abspath(__file__))
+        env_cfg_path = os.path.join(base_path, f"conf/env/{env_name}.yaml")
+        if not os.path.exists(env_cfg_path):
+            env_cfg_path = os.path.join(base_path, f"conf/env/{model_name}.yaml")
+        env_cfg = OmegaConf.load(env_cfg_path)
+
+        model_cfg = OmegaConf.create({
+            "env": env_cfg,
+            "frameskip": 5,
+            "num_action_repeat": 1,
+            "num_hist": env_cfg.get("history_size", 3),
+            "num_pred": 1,
+            "has_decoder": False,
+            "has_predictor": True,
+        })
     else:
         model_path = f"{ckpt_base_path}/outputs/{model_name}/"
         with open(os.path.join(model_path, "hydra.yaml"), "r") as f:
@@ -803,8 +882,18 @@ def planning_main(cfg_dict):
 
     seed(cfg_dict["seed"])
 
+    # Special handling for LeWM models
+    if is_lewm:
+        _, dset = hydra.utils.call(
+            model_cfg.env.dataset,
+            num_hist=model_cfg.num_hist,
+            num_pred=model_cfg.num_pred,
+            frameskip=model_cfg.frameskip,
+        )
+        dset = dset["valid"]
+
     # Special handling for ballnav - create a dummy dataset
-    if model_cfg.env.name == "ballnav":
+    elif model_cfg.env.name == "ballnav":
         from types import SimpleNamespace
         dset = SimpleNamespace()
         dset.action_dim = 2
@@ -840,10 +929,20 @@ def planning_main(cfg_dict):
 
     num_action_repeat = model_cfg.num_action_repeat
 
+    # Special handling for LeWM models
+    if is_lewm:
+        model = load_lewm_model(model_cfg.env, device=device)
+        from env.dmcontrol.dmcontrol_env_wrapper import DMControlEnvWrapper
+        env = DMControlEnvWrapper(
+            env_name=model_cfg.env.env_name,
+            n_envs=cfg_dict["n_evals"],
+            max_episode_steps=model_cfg.env.get("max_episode_steps", 100),
+            image_size=model_cfg.env.get("image_size", 224),
+        )
     # Special handling for ballnav - create direct environment wrapper
     # load_model has specific cases for ballnav and random_mlp to instantiate
     # the hard-coded world models and return before trying to ref ckpt
-    if model_cfg.env.name == "ballnav":
+    elif model_cfg.env.name == "ballnav":
         from env.ballnav.ballnav_env_wrapper import BallNavEnvWrapper
         env = BallNavEnvWrapper(device=str(device))
         model = load_model(None, model_cfg, num_action_repeat, device=device)
