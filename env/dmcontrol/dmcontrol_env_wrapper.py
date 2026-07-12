@@ -171,25 +171,31 @@ class DMControlEnvWrapper:
         }
         return obs_dict, states
 
-    def eval_state(self, goal_state, cur_state):
-        """Evaluate whether the current state has reached the goal.
+    def eval_state(self, goal_states, cur_states):
+        """Evaluate whether current states have reached goals (batched).
+
+        Args:
+            goal_states: (n_envs, state_dim) goal states
+            cur_states: (n_envs, state_dim) current states
 
         Thresholds match le-wm / stable-worldmodel:
           - Reacher (swm/ReacherDMControl): per-joint qpos tolerance of 0.05 rad
           - Cube (swm/OGBCube): Euclidean position tolerance of 0.04 m
         """
-        state_dist = np.linalg.norm(goal_state - cur_state)
+        goal_states = np.asarray(goal_states)
+        cur_states = np.asarray(cur_states)
+        state_dists = np.linalg.norm(goal_states - cur_states, axis=-1)
+
         if 'Cube' in self.env_name or 'OGB' in self.env_name:
-            # Cube: compare object position (first 3 dims of qpos)
-            success = state_dist <= 0.04
+            successes = state_dists <= 0.04
         else:
-            # Reacher: per-joint qpos threshold of 0.05 rad
-            n_qpos = len(goal_state) // 2
-            qpos_diff = np.abs(goal_state[:n_qpos] - cur_state[:n_qpos])
-            success = bool(np.all(qpos_diff < 0.05))
+            n_qpos = goal_states.shape[-1] // 2
+            qpos_diff = np.abs(goal_states[:, :n_qpos] - cur_states[:, :n_qpos])
+            successes = np.all(qpos_diff < 0.05, axis=-1)
+
         return {
-            'success': success,
-            'state_dist': state_dist,
+            'success': successes,
+            'state_dist': state_dists,
         }
 
     def update_env(self, env_info):
