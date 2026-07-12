@@ -174,13 +174,19 @@ class DMControlEnvWrapper:
     def eval_state(self, goal_state, cur_state):
         """Evaluate whether the current state has reached the goal.
 
-        Uses qpos distance (same as le-wm evaluation).
+        Thresholds match le-wm / stable-worldmodel:
+          - Reacher (swm/ReacherDMControl): per-joint qpos tolerance of 0.05 rad
+          - Cube (swm/OGBCube): Euclidean position tolerance of 0.04 m
         """
         state_dist = np.linalg.norm(goal_state - cur_state)
-        # For reacher: qpos is the first half of state
-        n_qpos = len(goal_state) // 2
-        qpos_dist = np.linalg.norm(goal_state[:n_qpos] - cur_state[:n_qpos])
-        success = qpos_dist < 0.5
+        if 'Cube' in self.env_name or 'OGB' in self.env_name:
+            # Cube: compare object position (first 3 dims of qpos)
+            success = state_dist <= 0.04
+        else:
+            # Reacher: per-joint qpos threshold of 0.05 rad
+            n_qpos = len(goal_state) // 2
+            qpos_diff = np.abs(goal_state[:n_qpos] - cur_state[:n_qpos])
+            success = bool(np.all(qpos_diff < 0.05))
         return {
             'success': success,
             'state_dist': state_dist,
