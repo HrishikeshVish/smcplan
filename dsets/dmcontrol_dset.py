@@ -1,15 +1,14 @@
 """
 Dataset loader for DMControl HDF5 datasets from le-wm / stable-worldmodel.
 
-Loads data in the format expected by grasp_langevin's PlanWorkspace:
+Uses stable_worldmodel.data for HDF5 reading (same as le-wm), then wraps
+the result to match grasp_langevin's PlanWorkspace interface:
   - dset[i] returns (obs, act, state, env_info)
   - dset.action_dim, action_mean, action_std, etc.
 """
 
-import os
 import logging
 
-import h5py
 import numpy as np
 import torch
 from torchvision import transforms
@@ -18,14 +17,11 @@ log = logging.getLogger(__name__)
 
 
 class DMControlDataset:
-    """HDF5 dataset for DMControl tasks (reacher, cube, etc.).
+    """Wraps a stable_worldmodel HDF5Dataset for grasp_langevin planners.
 
-    Expected HDF5 structure (from le-wm / stable-worldmodel):
-      - pixels: (N, C, H, W) uint8 images
-      - action: (N, action_dim) float actions
-      - episode_idx or ep_idx: (N,) int episode indices
-      - step_idx: (N,) int step indices within episodes
-      - Optional: qpos, qvel, observation
+    Reads the HDF5 file via stable_worldmodel.data (which handles SWMR mode,
+    hdf5plugin codecs, and lazy per-worker file handles), then exposes
+    episode-level access with the (obs, act, state, env_info) convention.
     """
 
     def __init__(
@@ -46,60 +42,65 @@ class DMControlDataset:
 
         log.info(f"Loading DMControl dataset from {data_path}")
 
-        # Load everything into memory and close the HDF5 file to avoid
-        # plugin-path errors on systems without /usr/local/hdf5/lib/plugin.
-        with h5py.File(data_path, 'r') as h5:
-            ep_col = 'episode_idx' if 'episode_idx' in h5 else 'ep_idx'
-            self.episode_indices = np.array(h5[ep_col])
-            self.step_indices = np.array(h5['step_idx'])
-            self.actions_all = np.array(h5['action'])
-            self.pixels_all = np.array(h5['pixels'])
+        from stable_worldmodel.data import load_dataset
 
-            self.has_observation = 'observation' in h5
-            self.has_qpos = 'qpos' in h5
-            if self.has_observation:
-                self.observations_all = np.array(h5['observation'])
-            elif self.has_qpos:
-                self.qpos_all = np.array(h5['qpos'])
-                self.qvel_all = np.array(h5['qvel'])
+        swm_dset = load_dataset(
+            data_path,
+            frameskip=frameskip,
+            num_steps=num_hist + num_pred,
+        )
 
-        # Get unique episodes and split
-        unique_eps = np.unique(self.episode_indices)
-        n_train = int(len(unique_eps) * split_ratio)
+        # swm_dset has .lengths (episode lengths) and .offsets (start offsets)
+        self._swm = swm_dset
+        n_episodes = len(swm_dset.lengths)
+        n_train = int(n_episodes * split_ratio)
+
         if split == "train":
-            self.episodes = unique_eps[:n_train]
+            self._ep_range = range(0, n_train)
         else:
-            self.episodes = unique_eps[n_train:]
+            self._ep_range = range(n_train, n_episodes)
 
-        # Build episode index mapping
-        self._build_episode_map()
+        # Compute action statistics from training episodes
+        train_actions = []
+        for ep_idx in range(n_train):
+            ep = swm_dset.load_episode(ep_idx)
+            if 'action' in ep:
+                a = ep['action'].numpy() if isinstance(ep['action'], torch.Tensor) else np.array(ep['action'])
+                train_actions.append(a)
 
-        # Compute statistics from training data
-        train_eps = unique_eps[:n_train]
-        train_mask = np.isin(self.episode_indices, train_eps)
-        train_actions = self.actions_all[train_mask]
-        valid_mask = ~np.isnan(train_actions).any(axis=1)
-        train_actions = train_actions[valid_mask]
-
-        self.action_dim = self.actions_all.shape[1]
-        self.action_mean = torch.tensor(np.nanmean(train_actions, axis=0), dtype=torch.float32)
-        self.action_std = torch.tensor(np.nanstd(train_actions, axis=0) + 1e-6, dtype=torch.float32)
-
-        # State/proprio stats (use zeros if not available)
-        if self.has_observation:
-            obs_data = self.observations_all[train_mask]
-            valid_obs = obs_data[~np.isnan(obs_data).any(axis=1)]
-            self.state_dim = obs_data.shape[1]
-            self.state_mean = torch.tensor(np.nanmean(valid_obs, axis=0), dtype=torch.float32)
-            self.state_std = torch.tensor(np.nanstd(valid_obs, axis=0) + 1e-6, dtype=torch.float32)
+        if train_actions:
+            all_actions = np.concatenate(train_actions, axis=0)
+            valid_mask = ~np.isnan(all_actions).any(axis=1)
+            all_actions = all_actions[valid_mask]
+            self.action_dim = all_actions.shape[1]
+            self.action_mean = torch.tensor(np.nanmean(all_actions, axis=0), dtype=torch.float32)
+            self.action_std = torch.tensor(np.nanstd(all_actions, axis=0) + 1e-6, dtype=torch.float32)
         else:
-            self.state_dim = 0
-            self.state_mean = torch.zeros(0)
-            self.state_std = torch.ones(0)
+            self.action_dim = 0
+            self.action_mean = torch.zeros(0)
+            self.action_std = torch.ones(0)
 
+        # State/proprio stats
+        self.state_dim = 0
+        self.state_mean = torch.zeros(0)
+        self.state_std = torch.ones(0)
         self.proprio_dim = 0
         self.proprio_mean = torch.zeros(0)
         self.proprio_std = torch.ones(0)
+
+        cols = swm_dset.column_names
+        if 'observation' in cols:
+            obs_data = []
+            for ep_idx in range(n_train):
+                ep = swm_dset.load_episode(ep_idx)
+                o = ep['observation'].numpy() if isinstance(ep['observation'], torch.Tensor) else np.array(ep['observation'])
+                obs_data.append(o)
+            if obs_data:
+                all_obs = np.concatenate(obs_data, axis=0)
+                valid_obs = all_obs[~np.isnan(all_obs).any(axis=1)]
+                self.state_dim = all_obs.shape[1]
+                self.state_mean = torch.tensor(np.nanmean(valid_obs, axis=0), dtype=torch.float32)
+                self.state_std = torch.tensor(np.nanstd(valid_obs, axis=0) + 1e-6, dtype=torch.float32)
 
         # Image transform
         self.transform = transforms.Compose([
@@ -108,23 +109,15 @@ class DMControlDataset:
         ])
 
         log.info(
-            f"DMControl dataset: {len(self.episodes)} episodes, "
+            f"DMControl dataset: {len(self._ep_range)} episodes, "
             f"action_dim={self.action_dim}, state_dim={self.state_dim}"
         )
 
-    def _build_episode_map(self):
-        """Build mapping from episode index to data rows."""
-        self.episode_map = {}
-        for ep in self.episodes:
-            mask = self.episode_indices == ep
-            indices = np.where(mask)[0]
-            self.episode_map[ep] = indices
-
     def __len__(self):
-        return len(self.episodes)
+        return len(self._ep_range)
 
     def __getitem__(self, idx):
-        """Get a trajectory.
+        """Get a full episode trajectory.
 
         Returns:
             obs: dict with 'visual' (T, C, H, W) float tensor, 'proprio' (T, D)
@@ -132,45 +125,49 @@ class DMControlDataset:
             state: (T, state_dim) float tensor
             env_info: dict with metadata
         """
-        ep = self.episodes[idx]
-        row_indices = self.episode_map[ep]
-        # Sort by step_idx
-        steps = self.step_indices[row_indices]
-        sort_order = np.argsort(steps)
-        row_indices = row_indices[sort_order]
+        ep_idx = self._ep_range[idx]
+        ep = self._swm.load_episode(ep_idx)
 
-        # Load pixels from in-memory array
-        pixels = self.pixels_all[row_indices]
-        if pixels.ndim == 4 and pixels.shape[-1] == 3:
-            pixels = np.transpose(pixels, (0, 3, 1, 2))
-        pixels = torch.tensor(pixels, dtype=torch.float32) / 255.0
+        # Pixels
+        pixels = ep['pixels']  # torch tensor from HDF5Dataset
+        if not isinstance(pixels, torch.Tensor):
+            pixels = torch.tensor(np.array(pixels))
+        # HDF5Dataset already handles HWC->CHW permutation
+        pixels = pixels.float() / 255.0
 
-        # Load actions
-        actions = torch.tensor(
-            np.nan_to_num(self.actions_all[row_indices], nan=0.0),
-            dtype=torch.float32,
-        )
-        actions = (actions - self.action_mean) / self.action_std
+        # Actions
+        actions = ep.get('action', torch.zeros(pixels.shape[0], self.action_dim))
+        if not isinstance(actions, torch.Tensor):
+            actions = torch.tensor(np.array(actions), dtype=torch.float32)
+        actions = actions.float()
+        actions = torch.nan_to_num(actions, nan=0.0)
+        if self.action_std.numel() > 0:
+            actions = (actions - self.action_mean) / self.action_std
 
-        # Load state
-        if self.has_observation:
-            state = torch.tensor(
-                self.observations_all[row_indices],
-                dtype=torch.float32,
-            )
-        elif self.has_qpos:
-            qpos = self.qpos_all[row_indices]
-            qvel = self.qvel_all[row_indices]
-            state = torch.tensor(np.concatenate([qpos, qvel], axis=-1), dtype=torch.float32)
+        # State
+        T = pixels.shape[0]
+        cols = self._swm.column_names
+        if 'observation' in cols and 'observation' in ep:
+            state = ep['observation']
+            if not isinstance(state, torch.Tensor):
+                state = torch.tensor(np.array(state), dtype=torch.float32)
+            state = state.float()
+        elif 'qpos' in cols and 'qpos' in ep:
+            qpos = ep['qpos']
+            qvel = ep['qvel']
+            if not isinstance(qpos, torch.Tensor):
+                qpos = torch.tensor(np.array(qpos), dtype=torch.float32)
+                qvel = torch.tensor(np.array(qvel), dtype=torch.float32)
+            state = torch.cat([qpos.float(), qvel.float()], dim=-1)
         else:
-            state = torch.zeros(len(row_indices), 0)
+            state = torch.zeros(T, 0)
 
         obs = {
             'visual': pixels,
-            'proprio': torch.zeros(len(row_indices), self.proprio_dim),
+            'proprio': torch.zeros(T, self.proprio_dim),
         }
 
-        env_info = {'episode': int(ep)}
+        env_info = {'episode': ep_idx}
         return obs, actions, state, env_info
 
 
