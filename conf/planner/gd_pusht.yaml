@@ -1,0 +1,23 @@
+_target_: planning.gd.GDPlanner
+horizon: 5
+sample_type: 'randn'
+
+lr: 0.1
+opt_steps: 1000
+eval_every: 10
+var_actions: 0.0
+var_states: 0.0
+num_samples: 1
+action_clamp: 0
+
+replay_buffer_path: /scratch/gilbreth/hviswan/dino_wm/pusht_offline_replay_buffer.pt
+latent_key: proprio
+
+hjb_nu: 0.3
+hjb_sigma_dyn: 0.08
+hjb_k_neighbors: 20
+hjb_lambda_off: 500.0
+hjb_tau_density: 0.01
+hjb_tau: 0.1
+
+name: gd_pusht
