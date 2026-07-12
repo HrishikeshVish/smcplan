@@ -66,11 +66,19 @@ class DMControlDataset:
         self.action_mean = torch.from_numpy(np.nanmean(all_actions, axis=0).astype(np.float32))
         self.action_std = torch.from_numpy((np.nanstd(all_actions, axis=0) + 1e-6).astype(np.float32))
 
-        # State stats
+        # State stats (prefer qpos/qvel to match env state format)
         self.state_dim = 0
         self.state_mean = torch.zeros(0)
         self.state_std = torch.ones(0)
-        if 'observation' in cols:
+        if 'qpos' in cols:
+            qpos_data = swm_dset.get_col_data('qpos')[:train_end]
+            qvel_data = swm_dset.get_col_data('qvel')[:train_end]
+            state_data = np.concatenate([qpos_data, qvel_data], axis=-1)
+            valid_state = state_data[~np.isnan(state_data).any(axis=1)]
+            self.state_dim = state_data.shape[1]
+            self.state_mean = torch.from_numpy(np.nanmean(valid_state, axis=0).astype(np.float32))
+            self.state_std = torch.from_numpy((np.nanstd(valid_state, axis=0) + 1e-6).astype(np.float32))
+        elif 'observation' in cols:
             obs_data = swm_dset.get_col_data('observation')[:train_end]
             valid_obs = obs_data[~np.isnan(obs_data).any(axis=1)]
             self.state_dim = obs_data.shape[1]
@@ -119,18 +127,18 @@ class DMControlDataset:
         actions = torch.nan_to_num(actions.float(), nan=0.0)
         actions = (actions - self.action_mean) / self.action_std
 
-        # State
+        # State: prefer qpos/qvel (matches le-wm and env's set_state interface)
         T = pixels.shape[0]
         cols = self._swm.column_names
-        if 'observation' in cols and 'observation' in ep:
+        if 'qpos' in cols and 'qpos' in ep:
+            qpos = ep['qpos'] if isinstance(ep['qpos'], torch.Tensor) else torch.from_numpy(np.array(ep['qpos']))
+            qvel = ep['qvel'] if isinstance(ep['qvel'], torch.Tensor) else torch.from_numpy(np.array(ep['qvel']))
+            state = torch.cat([qpos.float(), qvel.float()], dim=-1)
+        elif 'observation' in cols and 'observation' in ep:
             state = ep['observation']
             if not isinstance(state, torch.Tensor):
                 state = torch.from_numpy(np.array(state))
             state = state.float()
-        elif 'qpos' in cols and 'qpos' in ep:
-            qpos = ep['qpos'] if isinstance(ep['qpos'], torch.Tensor) else torch.from_numpy(np.array(ep['qpos']))
-            qvel = ep['qvel'] if isinstance(ep['qvel'], torch.Tensor) else torch.from_numpy(np.array(ep['qvel']))
-            state = torch.cat([qpos.float(), qvel.float()], dim=-1)
         else:
             state = torch.zeros(T, 0)
 

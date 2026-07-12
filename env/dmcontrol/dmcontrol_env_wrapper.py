@@ -215,21 +215,42 @@ class DMControlEnvWrapper:
             goal_states.append(self._get_env_state(env))
         return np.stack(init_states), np.stack(goal_states)
 
+    def _get_physics(self, env):
+        """Get the MuJoCo physics object from the environment.
+
+        The swm DMControlWrapper stores the dm_control env at self.env,
+        so physics is at env.unwrapped.env.physics (not env.unwrapped.physics).
+        """
+        unwrapped = env.unwrapped
+        # swm DMControlWrapper: unwrapped.env is the dm_control Environment
+        if hasattr(unwrapped, 'env') and hasattr(unwrapped.env, 'physics'):
+            return unwrapped.env.physics
+        # Direct dm_control env
+        if hasattr(unwrapped, 'physics'):
+            return unwrapped.physics
+        return None
+
     def _get_env_state(self, env):
         """Extract state from environment."""
-        unwrapped = env.unwrapped
-        if hasattr(unwrapped, 'physics'):
-            # DMControl via dm_control
-            qpos = unwrapped.physics.data.qpos.copy()
-            qvel = unwrapped.physics.data.qvel.copy()
+        physics = self._get_physics(env)
+        if physics is not None:
+            qpos = physics.data.qpos.copy()
+            qvel = physics.data.qvel.copy()
             return np.concatenate([qpos, qvel])
         return np.zeros(0)
 
     def _set_env_state(self, env, state):
         """Set environment state."""
         unwrapped = env.unwrapped
-        if hasattr(unwrapped, 'physics'):
-            n = len(unwrapped.physics.data.qpos)
-            unwrapped.physics.data.qpos[:] = state[:n]
-            unwrapped.physics.data.qvel[:] = state[n:]
-            unwrapped.physics.forward()
+        # Prefer the wrapper's set_state() method (handles act array, forward())
+        if hasattr(unwrapped, 'set_state'):
+            physics = self._get_physics(env)
+            n = len(physics.data.qpos)
+            unwrapped.set_state(state[:n], state[n:])
+            return
+        physics = self._get_physics(env)
+        if physics is not None:
+            n = len(physics.data.qpos)
+            physics.data.qpos[:] = state[:n]
+            physics.data.qvel[:] = state[n:]
+            physics.forward()
