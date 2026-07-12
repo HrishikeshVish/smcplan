@@ -18,6 +18,9 @@ class Subset(_Subset):
             end = self.dataset.get_seq_length(_idx)
         return self.dataset.__getitem__(_idx, start, end, frameskip)
 
+    def __getitems__(self, indices):
+        return [self.__getitem__(idx) for idx in indices]
+
 # https://github.com/JaidedAI/EasyOCR/issues/1243
 def _accumulate(iterable, fn=lambda x, y: x + y):
     "Return running totals"
@@ -108,6 +111,9 @@ class TrajSlicerDataset(TrajDataset):
         obs, act, state, _ = self.dataset.__getitem__(i, start, end, self.frameskip)
         act = rearrange(act, "(n f) d -> n (f d)", n=self.num_frames)  # concat actions
         return tuple([obs, act, state])
+
+    def __getitems__(self, indices):
+        return [self.__getitem__(idx) for idx in indices]
 
 
 def random_split_traj(
