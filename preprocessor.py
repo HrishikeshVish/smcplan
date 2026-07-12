@@ -40,6 +40,8 @@ class Preprocessor:
     
     def normalize_proprios(self, proprio):
         """Normalize proprioceptive inputs of shape ``(..., proprio_dim)``."""
+        if self.proprio_mean.numel() == 0:
+            return torch.zeros(*proprio.shape[:-1], 0, dtype=proprio.dtype)
         return (proprio - self.proprio_mean) / self.proprio_std
 
     def normalize_states(self, state):
