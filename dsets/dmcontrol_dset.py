@@ -46,15 +46,22 @@ class DMControlDataset:
 
         log.info(f"Loading DMControl dataset from {data_path}")
 
-        self.h5 = h5py.File(data_path, 'r')
+        # Load everything into memory and close the HDF5 file to avoid
+        # plugin-path errors on systems without /usr/local/hdf5/lib/plugin.
+        with h5py.File(data_path, 'r') as h5:
+            ep_col = 'episode_idx' if 'episode_idx' in h5 else 'ep_idx'
+            self.episode_indices = np.array(h5[ep_col])
+            self.step_indices = np.array(h5['step_idx'])
+            self.actions_all = np.array(h5['action'])
+            self.pixels_all = np.array(h5['pixels'])
 
-        # Detect column names
-        self.ep_col = 'episode_idx' if 'episode_idx' in self.h5 else 'ep_idx'
-
-        # Load metadata
-        self.episode_indices = np.array(self.h5[self.ep_col])
-        self.step_indices = np.array(self.h5['step_idx'])
-        self.actions_all = np.array(self.h5['action'])
+            self.has_observation = 'observation' in h5
+            self.has_qpos = 'qpos' in h5
+            if self.has_observation:
+                self.observations_all = np.array(h5['observation'])
+            elif self.has_qpos:
+                self.qpos_all = np.array(h5['qpos'])
+                self.qvel_all = np.array(h5['qvel'])
 
         # Get unique episodes and split
         unique_eps = np.unique(self.episode_indices)
@@ -79,8 +86,8 @@ class DMControlDataset:
         self.action_std = torch.tensor(np.nanstd(train_actions, axis=0) + 1e-6, dtype=torch.float32)
 
         # State/proprio stats (use zeros if not available)
-        if 'observation' in self.h5:
-            obs_data = np.array(self.h5['observation'])[train_mask]
+        if self.has_observation:
+            obs_data = self.observations_all[train_mask]
             valid_obs = obs_data[~np.isnan(obs_data).any(axis=1)]
             self.state_dim = obs_data.shape[1]
             self.state_mean = torch.tensor(np.nanmean(valid_obs, axis=0), dtype=torch.float32)
@@ -113,15 +120,6 @@ class DMControlDataset:
             indices = np.where(mask)[0]
             self.episode_map[ep] = indices
 
-    @staticmethod
-    def _read_slice(dataset, indices):
-        """Read from an HDF5 dataset using contiguous slices to avoid plugin errors."""
-        if len(indices) > 0 and np.all(np.diff(indices) == 1):
-            return np.array(dataset[indices[0]:indices[-1] + 1])
-        lo, hi = int(indices.min()), int(indices.max()) + 1
-        block = np.array(dataset[lo:hi])
-        return block[indices - lo]
-
     def __len__(self):
         return len(self.episodes)
 
@@ -141,10 +139,9 @@ class DMControlDataset:
         sort_order = np.argsort(steps)
         row_indices = row_indices[sort_order]
 
-        # Load pixels – use contiguous slices to avoid HDF5 plugin errors
-        pixels = self._read_slice(self.h5['pixels'], row_indices)
+        # Load pixels from in-memory array
+        pixels = self.pixels_all[row_indices]
         if pixels.ndim == 4 and pixels.shape[-1] == 3:
-            # HWC -> CHW
             pixels = np.transpose(pixels, (0, 3, 1, 2))
         pixels = torch.tensor(pixels, dtype=torch.float32) / 255.0
 
@@ -153,18 +150,17 @@ class DMControlDataset:
             np.nan_to_num(self.actions_all[row_indices], nan=0.0),
             dtype=torch.float32,
         )
-        # Normalize
         actions = (actions - self.action_mean) / self.action_std
 
         # Load state
-        if 'observation' in self.h5:
+        if self.has_observation:
             state = torch.tensor(
-                self._read_slice(self.h5['observation'], row_indices),
+                self.observations_all[row_indices],
                 dtype=torch.float32,
             )
-        elif 'qpos' in self.h5:
-            qpos = self._read_slice(self.h5['qpos'], row_indices)
-            qvel = self._read_slice(self.h5['qvel'], row_indices)
+        elif self.has_qpos:
+            qpos = self.qpos_all[row_indices]
+            qvel = self.qvel_all[row_indices]
             state = torch.tensor(np.concatenate([qpos, qvel], axis=-1), dtype=torch.float32)
         else:
             state = torch.zeros(len(row_indices), 0)
