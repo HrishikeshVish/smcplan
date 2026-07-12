@@ -28,10 +28,12 @@ def create_objective_fn(alpha, base, mode="last", action_mag_coeff=0.0):
             loss_visual = metric(z_obs_pred["visual"][:, -1:], z_obs_tgt["visual"]).mean(
                 dim=tuple(range(1, z_obs_pred["visual"].ndim))
             )
-            loss_proprio = metric(z_obs_pred["proprio"][:, -1:], z_obs_tgt["proprio"]).mean(
-                dim=tuple(range(1, z_obs_pred["proprio"].ndim))
-            )
-            loss = loss_visual + alpha * loss_proprio
+            loss = loss_visual
+            if alpha > 0 and z_obs_pred["proprio"].shape[-1] > 0 and z_obs_tgt["proprio"].shape[-1] > 0:
+                loss_proprio = metric(z_obs_pred["proprio"][:, -1:], z_obs_tgt["proprio"]).mean(
+                    dim=tuple(range(1, z_obs_pred["proprio"].ndim))
+                )
+                loss = loss + alpha * loss_proprio
 
         else:
             loss = metric(z_obs_pred[:,-1:], z_obs_tgt).mean(dim=tuple(range(1,z_obs_pred.ndim)))
@@ -60,12 +62,12 @@ def create_objective_fn(alpha, base, mode="last", action_mag_coeff=0.0):
         loss_visual = metric(z_obs_pred["visual"], z_obs_tgt["visual"]).mean(
             dim=tuple(range(2, z_obs_pred["visual"].ndim))
         )
-        loss_proprio = metric(z_obs_pred["proprio"], z_obs_tgt["proprio"]).mean(
-            dim=tuple(range(2, z_obs_pred["proprio"].ndim))
-        )
-        loss_visual = (loss_visual * coeffs).mean(dim=1)
-        loss_proprio = (loss_proprio * coeffs).mean(dim=1)
-        loss = loss_visual + alpha * loss_proprio
+        loss = (loss_visual * coeffs).mean(dim=1)
+        if alpha > 0 and z_obs_pred["proprio"].shape[-1] > 0 and z_obs_tgt["proprio"].shape[-1] > 0:
+            loss_proprio = metric(z_obs_pred["proprio"], z_obs_tgt["proprio"]).mean(
+                dim=tuple(range(2, z_obs_pred["proprio"].ndim))
+            )
+            loss = loss + alpha * (loss_proprio * coeffs).mean(dim=1)
         
         # Add action magnitude regularization if actions are provided
         if actions is not None and action_mag_coeff > 0:
