@@ -3,14 +3,13 @@ import torch
 import numpy as np
 from torch.utils.data import Dataset
 from typing import Optional, Sequence, List
-from torch.utils.data import Dataset, Subset as _Subset
+from torch.utils.data import Dataset
 from torch import default_generator, randperm
 from einops import rearrange
 
 
-class Subset(_Subset):
+class Subset(Dataset):
     def __init__(self, dataset, indices):
-        # Bypass _Subset.__init__ to avoid __getitems__ check in newer PyTorch
         self.dataset = dataset
         self.indices = indices
 
@@ -21,9 +20,6 @@ class Subset(_Subset):
         if end is None:
             end = self.dataset.get_seq_length(_idx)
         return self.dataset.__getitem__(_idx, start, end, frameskip)
-
-    def __getitems__(self, indices):
-        return [self.__getitem__(idx) for idx in indices]
 
     def __len__(self):
         return len(self.indices)
@@ -64,9 +60,6 @@ class TrajSubset(TrajDataset, Subset):
 
     def get_seq_length(self, idx):
         return self.dataset.get_seq_length(self.indices[idx])
-
-    def __getitems__(self, indices):
-        return [self.__getitem__(idx) for idx in indices]
 
     def __getattr__(self, name):
         if hasattr(self.dataset, name):
@@ -118,9 +111,6 @@ class TrajSlicerDataset(TrajDataset):
         obs, act, state, _ = self.dataset.__getitem__(i, start, end, self.frameskip)
         act = rearrange(act, "(n f) d -> n (f d)", n=self.num_frames)  # concat actions
         return tuple([obs, act, state])
-
-    def __getitems__(self, indices):
-        return [self.__getitem__(idx) for idx in indices]
 
 
 def random_split_traj(
