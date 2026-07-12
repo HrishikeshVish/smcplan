@@ -276,11 +276,9 @@ GRASP also supports **LeWM** pretrained world models for DMControl and OGBench t
 
 ### Prerequisites
 
-Install `stable-worldmodel` (needed for model instantiation):
-
-```bash
-pip install stable-worldmodel[all]
-```
+No extra packages are required beyond the base GRASP dependencies. The LeWM model
+classes are bundled in `models/lewm_modules.py` (extracted from stable-worldmodel)
+so there is no need to install `stable-worldmodel`.
 
 On headless GPU nodes (e.g., SLURM clusters), set:
 

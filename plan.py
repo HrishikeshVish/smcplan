@@ -748,6 +748,82 @@ def load_model(model_ckpt, train_cfg, num_action_repeat, device):
     return model
 
 
+def _build_lewm_jepa(cfg):
+    """Build a LeWM JEPA model from config.json without stable_worldmodel.
+
+    Constructs the encoder (HuggingFace ViT), predictor, action encoder,
+    projector, and pred_proj directly from the config parameters.
+    """
+    from models.lewm_modules import JEPA, Predictor, Embedder, MLP
+
+    enc_cfg = cfg["encoder"]
+    pred_cfg = cfg["predictor"]
+    act_cfg = cfg["action_encoder"]
+    proj_cfg = cfg["projector"]
+    pred_proj_cfg = cfg["pred_proj"]
+
+    # Build encoder: HuggingFace ViT
+    from transformers import ViTModel, ViTConfig
+
+    VIT_CONFIGS = {
+        "tiny":  {"hidden_size": 192, "num_hidden_layers": 12, "num_attention_heads": 3, "intermediate_size": 768},
+        "small": {"hidden_size": 384, "num_hidden_layers": 12, "num_attention_heads": 6, "intermediate_size": 1536},
+        "base":  {"hidden_size": 768, "num_hidden_layers": 12, "num_attention_heads": 12, "intermediate_size": 3072},
+    }
+    size = enc_cfg.get("size", "tiny")
+    vit_params = VIT_CONFIGS[size]
+    vit_config = ViTConfig(
+        image_size=enc_cfg.get("image_size", 224),
+        patch_size=enc_cfg.get("patch_size", 14),
+        **vit_params,
+    )
+    encoder = ViTModel(vit_config, add_pooling_layer=False)
+
+    # Build predictor
+    predictor = Predictor(
+        num_frames=pred_cfg["num_frames"],
+        input_dim=pred_cfg["input_dim"],
+        hidden_dim=pred_cfg["hidden_dim"],
+        output_dim=pred_cfg["output_dim"],
+        depth=pred_cfg["depth"],
+        heads=pred_cfg["heads"],
+        mlp_dim=pred_cfg["mlp_dim"],
+        dim_head=pred_cfg.get("dim_head", 64),
+        dropout=pred_cfg.get("dropout", 0.0),
+        emb_dropout=pred_cfg.get("emb_dropout", 0.0),
+    )
+
+    # Build action encoder
+    action_encoder = Embedder(
+        input_dim=act_cfg["input_dim"],
+        emb_dim=act_cfg["emb_dim"],
+    )
+
+    # Build projector and pred_proj
+    import torch.nn as tnn
+    projector = MLP(
+        input_dim=proj_cfg["input_dim"],
+        output_dim=proj_cfg["output_dim"],
+        hidden_dim=proj_cfg["hidden_dim"],
+        norm_fn=tnn.BatchNorm1d,
+    )
+    pred_proj = MLP(
+        input_dim=pred_proj_cfg["input_dim"],
+        output_dim=pred_proj_cfg["output_dim"],
+        hidden_dim=pred_proj_cfg["hidden_dim"],
+        norm_fn=tnn.BatchNorm1d,
+    )
+
+    model = JEPA(
+        encoder=encoder,
+        predictor=predictor,
+        action_encoder=action_encoder,
+        projector=projector,
+        pred_proj=pred_proj,
+    )
+    return model
+
+
 def load_lewm_model(env_cfg, ckpt_base_path, device):
     """Load a LeWM JEPA model and wrap it for grasp_langevin planners.
 
@@ -761,8 +837,6 @@ def load_lewm_model(env_cfg, ckpt_base_path, device):
     """
     import json
     from pathlib import Path
-    from hydra.utils import instantiate
-    from omegaconf import OmegaConf as OC
     from models.lewm_world_model import LeWMWorldModel
 
     ckpt_path = Path(ckpt_base_path) / "outputs" / env_cfg.lewm_checkpoint
@@ -773,7 +847,7 @@ def load_lewm_model(env_cfg, ckpt_base_path, device):
         log.info(f"Loading LeWM from serialized object: {object_ckpt}")
         jepa_model = torch.load(object_ckpt, map_location=device, weights_only=False)
     else:
-        # Load from weights.pt + config.json
+        # Load from weights.pt + config.json (no stable_worldmodel dependency)
         config_path = ckpt_path / "config.json"
         weights_path = ckpt_path / "weights.pt"
         if not config_path.exists() or not weights_path.exists():
@@ -783,7 +857,7 @@ def load_lewm_model(env_cfg, ckpt_base_path, device):
             )
         log.info(f"Loading LeWM from config + weights: {ckpt_path}")
         cfg_model = json.loads(config_path.read_text())
-        jepa_model = instantiate(OC.create(cfg_model))
+        jepa_model = _build_lewm_jepa(cfg_model)
         sd = torch.load(weights_path, map_location=device, weights_only=False)
         jepa_model.load_state_dict(sd, strict=True)
 
