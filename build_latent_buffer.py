@@ -4,46 +4,31 @@ Build a latent replay buffer for the HJB cost-to-go solver in gd.py.
 Encodes dataset episodes through a pretrained world model and saves
 (z_curr, z_next) transition pairs in the model's latent space.
 
-Supports:
-  - DINO-WM (pointmaze, pusht): uses proprio or visual latents
-  - LeWM (reacher, cube): uses visual (CLS token) latents
-
 Usage:
-  # PointMaze (DINO-WM, proprio latents)
-  python build_latent_buffer.py env=pointmaze
-
-  # PushT (DINO-WM, visual latents)
-  python build_latent_buffer.py env=pusht
-
   # Reacher (LeWM, visual latents)
-  python build_latent_buffer.py env=lewm_reacher
+  python build_latent_buffer.py --env lewm_reacher
+
+  # PointMaze (DINO-WM, proprio latents)
+  python build_latent_buffer.py --env pointmaze --checkpoint-dir ./checkpoints/pointmaze
+
+  # PushT (DINO-WM, proprio latents)
+  python build_latent_buffer.py --env pusht --checkpoint-dir ./checkpoints/pusht --max-episodes 500
 """
 
 import os
+import argparse
 import torch
-import hydra
 import numpy as np
 from pathlib import Path
 from tqdm import tqdm
 from omegaconf import OmegaConf
-from torch.utils.data import DataLoader
 
-os.environ.setdefault("DATASET_DIR", "./data")
+os.environ.setdefault("DATASET_DIR", "/scratch/gilbreth/hviswan/grasp/data")
 
 
 def encode_dino_wm_dataset(wm, dset, latent_key, device, max_episodes=8000):
-    """Encode a DINO-WM dataset into latent transition pairs.
-
-    Args:
-        wm: Pretrained DINO world model
-        dset: Dataset returning (obs_dict, actions, state, info) per episode
-        latent_key: 'proprio' or 'visual' - which latent to extract
-        device: torch device
-        max_episodes: max episodes to process
-
-    Returns:
-        z_curr, z_next: (N_transitions, D) tensors
-    """
+    """Encode a DINO-WM dataset into latent transition pairs."""
+    from torch.utils.data import DataLoader
     loader = DataLoader(dset, batch_size=1, shuffle=True)
     z_curr_list = []
     z_next_list = []
@@ -76,17 +61,7 @@ def encode_dino_wm_dataset(wm, dset, latent_key, device, max_episodes=8000):
 
 
 def encode_lewm_dataset(wm, dset, device, max_episodes=8000):
-    """Encode a LeWM dataset into latent transition pairs.
-
-    Args:
-        wm: LeWMWorldModel wrapper
-        dset: DMControlDataset returning (obs_dict, actions, state, info)
-        device: torch device
-        max_episodes: max episodes to process
-
-    Returns:
-        z_curr, z_next: (N_transitions, D) tensors
-    """
+    """Encode a LeWM dataset into latent transition pairs."""
     z_curr_list = []
     z_next_list = []
 
@@ -113,23 +88,33 @@ def encode_lewm_dataset(wm, dset, device, max_episodes=8000):
     return z_curr, z_next
 
 
-@hydra.main(version_base="1.2", config_path="conf", config_name="build_latent_buffer")
-def main(cfg):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    env_name = cfg.env
-    max_episodes = cfg.get("max_episodes", 8000)
+def main():
+    parser = argparse.ArgumentParser(description="Build latent replay buffer for HJB solver")
+    parser.add_argument("--env", required=True, help="Environment: pointmaze, pusht, lewm_reacher, lewm_cube")
+    parser.add_argument("--checkpoint-dir", default=None, help="DINO-WM checkpoint dir (ignored for LeWM)")
+    parser.add_argument("--ckpt-base-path", default="/scratch/gilbreth/hviswan/grasp/checkpoints", help="LeWM checkpoint base path")
+    parser.add_argument("--output-path", default=None, help="Output .pt path (auto-generated if not set)")
+    parser.add_argument("--max-episodes", type=int, default=None, help="Max episodes to encode (default: all)")
+    parser.add_argument("--latent-key", default="proprio", help="Latent key for DINO-WM: proprio or visual")
+    args = parser.parse_args()
 
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    env_name = args.env
     is_lewm = env_name.startswith("lewm_")
 
+    if args.output_path is None:
+        args.output_path = f"/scratch/gilbreth/hviswan/grasp/latent_buffers/{env_name}_buffer.pt"
+
     if is_lewm:
-        # Load LeWM model and DMControl dataset
-        from plan import load_lewm_model, ALL_LEWM_ENVS
+        from plan import load_lewm_model
+        import hydra
+
         base_path = os.path.dirname(os.path.abspath(__file__))
         short_name = env_name.replace("lewm_", "")
         env_cfg = OmegaConf.load(os.path.join(base_path, f"conf/env/{short_name}.yaml"))
 
         print(f"Loading LeWM model for {env_name}...")
-        wm = load_lewm_model(env_cfg, ckpt_base_path=cfg.ckpt_base_path, device=device)
+        wm = load_lewm_model(env_cfg, ckpt_base_path=args.ckpt_base_path, device=device)
         wm.eval()
 
         print(f"Loading dataset...")
@@ -141,13 +126,31 @@ def main(cfg):
         )
         dset = dsets["train"]
 
+        n_episodes = len(dset)
+        print(f"Dataset has {n_episodes} episodes")
+
+        # Encode one episode to get latent dim
+        obs, _, _, _ = dset[0]
+        with torch.no_grad():
+            pixels = obs["visual"].unsqueeze(0).float().to(device)
+            z = wm.encode_obs({"visual": pixels, "proprio": torch.zeros(1, pixels.shape[1], 0, device=device)})
+            latent_dim = z["visual"].shape[-1]
+        print(f"Latent dimension: {latent_dim}")
+        print(f"Episode length: {obs['visual'].shape[0]} frames")
+
+        max_episodes = args.max_episodes if args.max_episodes is not None else n_episodes
+        print(f"Encoding {max_episodes} / {n_episodes} episodes...")
+
         z_curr, z_next = encode_lewm_dataset(wm, dset, device, max_episodes)
     else:
-        # Load DINO-WM model and dataset
         from hydra.utils import to_absolute_path
         from utils import load_model
 
-        dino_run_dir = Path(to_absolute_path(cfg.checkpoint_dir))
+        checkpoint_dir = args.checkpoint_dir
+        if checkpoint_dir is None:
+            checkpoint_dir = f"./checkpoints/{env_name}"
+
+        dino_run_dir = Path(os.path.abspath(checkpoint_dir))
         model_cfg = OmegaConf.load(dino_run_dir / "hydra.yaml")
         model_ckpt = dino_run_dir / "checkpoints" / "model_latest.pth"
 
@@ -157,7 +160,7 @@ def main(cfg):
         wm.eval()
         wm.requires_grad_(False)
 
-        dataset_path = to_absolute_path(model_cfg.env.dataset.data_path)
+        dataset_path = str(dino_run_dir.parent / model_cfg.env.dataset.data_path) if not os.path.isabs(model_cfg.env.dataset.data_path) else model_cfg.env.dataset.data_path
 
         if env_name == "pointmaze":
             from datasets.point_maze_dset import PointMazeDataset
@@ -180,16 +183,21 @@ def main(cfg):
         else:
             raise ValueError(f"Unknown DINO-WM env: {env_name}")
 
-        latent_key = cfg.get("latent_key", "proprio")
+        n_episodes = len(dset)
+        print(f"Dataset has {n_episodes} episodes")
+
+        max_episodes = args.max_episodes if args.max_episodes is not None else n_episodes
+        print(f"Encoding {max_episodes} / {n_episodes} episodes...")
+
+        latent_key = args.latent_key
         z_curr, z_next = encode_dino_wm_dataset(wm, dset, latent_key, device, max_episodes)
 
-    print(f"Transitions: {z_curr.shape[0]}, latent_dim: {z_curr.shape[1]}")
+    print(f"Total transitions: {z_curr.shape[0]}, latent_dim: {z_curr.shape[1]}")
 
     buffer = {"z_curr": z_curr, "z_next": z_next}
-    save_path = cfg.output_path
-    os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
-    torch.save(buffer, save_path)
-    print(f"Saved replay buffer to {save_path}")
+    os.makedirs(os.path.dirname(args.output_path) or ".", exist_ok=True)
+    torch.save(buffer, args.output_path)
+    print(f"Saved replay buffer to {args.output_path}")
 
 
 if __name__ == "__main__":
