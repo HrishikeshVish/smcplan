@@ -9,6 +9,12 @@ import numpy as np
 import torch
 import gymnasium as gym
 
+# Import stable_worldmodel.envs to register swm/* gymnasium environments
+try:
+    import stable_worldmodel.envs  # noqa: F401
+except ImportError:
+    pass
+
 
 class DMControlEnvWrapper:
     """Wraps a DMControl gym environment for grasp_langevin planning.
