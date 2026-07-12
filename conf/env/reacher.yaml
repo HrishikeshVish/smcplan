@@ -1,12 +1,12 @@
 name: lewm_reacher
 
-# LeWM checkpoint path (relative to STABLEWM_HOME or absolute)
-lewm_checkpoint: reacher/lewm
+# LeWM checkpoint folder name (under ckpt_base_path/outputs/)
+lewm_checkpoint: lewm_reacher
 
 # Dataset
 dataset:
   _target_: dsets.dmcontrol_dset.load_dmcontrol_dataset
-  data_path: ${oc.env:STABLEWM_HOME}/dmc/reacher_random.h5
+  data_path: ${oc.env:DATASET_DIR}/dmc/reacher.h5
   num_hist: 3
   num_pred: 1
   frameskip: 5

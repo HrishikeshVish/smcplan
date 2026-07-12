@@ -270,6 +270,118 @@ Key top-level directories:
 
 
 
+## LeWM (JEPA) World Models: Reacher & Cube
+
+GRASP also supports **LeWM** pretrained world models for DMControl and OGBench tasks. This uses the [LeWorldModel](https://github.com/lucas-maes/le-wm) JEPA architecture with pretrained checkpoints from HuggingFace.
+
+### Prerequisites
+
+Install `stable-worldmodel` (needed for model instantiation):
+
+```bash
+pip install stable-worldmodel[all]
+```
+
+On headless GPU nodes (e.g., SLURM clusters), set:
+
+```bash
+export MUJOCO_GL=egl
+```
+
+### Directory Layout
+
+LeWM checkpoints and datasets follow the same layout as DINO-WM models:
+
+```text
+<ckpt_base_path>/
+└── outputs/
+    ├── lewm_reacher/          # LeWM reacher checkpoint
+    │   ├── config.json        # Model architecture config (from HuggingFace)
+    │   └── weights.pt         # Pretrained weights
+    └── lewm_cube/             # LeWM cube checkpoint
+        ├── config.json
+        └── weights.pt
+
+$DATASET_DIR/
+├── dmc/
+│   └── reacher.h5             # DMControl reacher dataset (HDF5)
+└── ogbench/
+    └── cube_single_expert.h5  # OGBench cube dataset (HDF5)
+```
+
+### Environment Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `DATASET_DIR` | Root directory for all datasets | `/scratch/gilbreth/hviswan/grasp/data` |
+| `ckpt_base_path` | Root for checkpoints (set in `conf/plan_grasp.yaml` or CLI) | `/scratch/gilbreth/hviswan/grasp/checkpoints` |
+| `MUJOCO_GL` | MuJoCo rendering backend for headless nodes | `egl` |
+| `TORCH_HOME` | Torch hub cache (optional, to avoid home dir quota) | `/depot/bera89/data/hviswan/.cache/torch` |
+
+### Setting Up Checkpoints
+
+Download pretrained LeWM checkpoints from HuggingFace and place them in the expected directory:
+
+```bash
+# Reacher
+mkdir -p $CKPT_BASE_PATH/outputs/lewm_reacher
+huggingface-cli download quentinll/lewm-reacher --local-dir $CKPT_BASE_PATH/outputs/lewm_reacher
+
+# Cube
+mkdir -p $CKPT_BASE_PATH/outputs/lewm_cube
+huggingface-cli download quentinll/lewm-cube --local-dir $CKPT_BASE_PATH/outputs/lewm_cube
+```
+
+Each downloaded folder should contain `config.json` and `weights.pt`.
+
+### Setting Up Datasets
+
+Download datasets from HuggingFace and place the `.h5` files:
+
+```bash
+mkdir -p $DATASET_DIR/dmc
+# Download reacher dataset and place as:
+# $DATASET_DIR/dmc/reacher.h5
+
+mkdir -p $DATASET_DIR/ogbench
+# Download cube dataset and place as:
+# $DATASET_DIR/ogbench/cube_single_expert.h5
+```
+
+Datasets are available from the [LeWM HuggingFace collection](https://huggingface.co/collections/quentinll/lewm).
+
+### Running Planning
+
+```bash
+# Reacher with GRASP planner
+python plan.py model_name=lewm_reacher planner=grasp goal_H=5 goal_source=dset n_evals=5
+
+# Reacher with CEM
+python plan.py model_name=lewm_reacher planner=cem goal_H=5 goal_source=dset
+
+# Cube with GRASP
+python plan.py model_name=lewm_cube planner=grasp goal_H=5 goal_source=dset
+
+# Override checkpoint path from CLI
+python plan.py model_name=lewm_reacher planner=grasp ckpt_base_path=/my/custom/path
+```
+
+The `model_name` must start with `lewm_` (e.g., `lewm_reacher`, `lewm_cube`). This triggers the LeWM loading path, which:
+
+1. Reads the env config from `conf/env/<name>.yaml` (e.g., `conf/env/reacher.yaml`)
+2. Loads the JEPA checkpoint from `<ckpt_base_path>/outputs/<lewm_checkpoint>/`
+3. Wraps it in `LeWMWorldModel` (in `models/lewm_world_model.py`) to match the planner interface
+4. Loads the HDF5 dataset from `$DATASET_DIR/dmc/<name>.h5`
+
+### Config Files
+
+| Config | Purpose |
+|--------|---------|
+| `conf/env/reacher.yaml` | Reacher env, dataset path, model params (action_dim=2) |
+| `conf/env/cube.yaml` | Cube env, dataset path, model params (action_dim=10) |
+| `conf/planner/grasp.yaml` | GRASP hyperparameters |
+| `conf/planner/cem.yaml` | CEM hyperparameters |
+
 ## Citation
 
 ```text

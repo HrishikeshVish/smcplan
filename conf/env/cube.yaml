@@ -1,12 +1,12 @@
 name: lewm_cube
 
-# LeWM checkpoint path (relative to STABLEWM_HOME or absolute)
-lewm_checkpoint: cube/lewm
+# LeWM checkpoint folder name (under ckpt_base_path/outputs/)
+lewm_checkpoint: lewm_cube
 
 # Dataset
 dataset:
   _target_: dsets.dmcontrol_dset.load_dmcontrol_dataset
-  data_path: ${oc.env:STABLEWM_HOME}/ogbench/cube_single_expert.h5
+  data_path: ${oc.env:DATASET_DIR}/ogbench/cube_single_expert.h5
   num_hist: 3
   num_pred: 1
   frameskip: 5

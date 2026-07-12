@@ -748,11 +748,12 @@ def load_model(model_ckpt, train_cfg, num_action_repeat, device):
     return model
 
 
-def load_lewm_model(env_cfg, device):
+def load_lewm_model(env_cfg, ckpt_base_path, device):
     """Load a LeWM JEPA model and wrap it for grasp_langevin planners.
 
     Args:
         env_cfg: OmegaConf config with lewm_checkpoint, history_size, action_dim, etc.
+        ckpt_base_path: Root checkpoint directory (same as grasp's ckpt_base_path)
         device: torch device
 
     Returns:
@@ -764,8 +765,7 @@ def load_lewm_model(env_cfg, device):
     from omegaconf import OmegaConf as OC
     from models.lewm_world_model import LeWMWorldModel
 
-    cache_dir = os.environ.get("STABLEWM_HOME", os.path.expanduser("~/.stable_worldmodel"))
-    ckpt_path = Path(cache_dir) / env_cfg.lewm_checkpoint
+    ckpt_path = Path(ckpt_base_path) / "outputs" / env_cfg.lewm_checkpoint
 
     # Try loading as serialized object first
     object_ckpt = ckpt_path / "lewm_object.ckpt"
@@ -931,7 +931,7 @@ def planning_main(cfg_dict):
 
     # Special handling for LeWM models
     if is_lewm:
-        model = load_lewm_model(model_cfg.env, device=device)
+        model = load_lewm_model(model_cfg.env, ckpt_base_path=ckpt_base_path, device=device)
         from env.dmcontrol.dmcontrol_env_wrapper import DMControlEnvWrapper
         env = DMControlEnvWrapper(
             env_name=model_cfg.env.env_name,
