@@ -113,6 +113,15 @@ class DMControlDataset:
             indices = np.where(mask)[0]
             self.episode_map[ep] = indices
 
+    @staticmethod
+    def _read_slice(dataset, indices):
+        """Read from an HDF5 dataset using contiguous slices to avoid plugin errors."""
+        if len(indices) > 0 and np.all(np.diff(indices) == 1):
+            return np.array(dataset[indices[0]:indices[-1] + 1])
+        lo, hi = int(indices.min()), int(indices.max()) + 1
+        block = np.array(dataset[lo:hi])
+        return block[indices - lo]
+
     def __len__(self):
         return len(self.episodes)
 
@@ -132,8 +141,8 @@ class DMControlDataset:
         sort_order = np.argsort(steps)
         row_indices = row_indices[sort_order]
 
-        # Load pixels
-        pixels = np.array(self.h5['pixels'][row_indices])  # (T, C, H, W) or (T, H, W, C)
+        # Load pixels – use contiguous slices to avoid HDF5 plugin errors
+        pixels = self._read_slice(self.h5['pixels'], row_indices)
         if pixels.ndim == 4 and pixels.shape[-1] == 3:
             # HWC -> CHW
             pixels = np.transpose(pixels, (0, 3, 1, 2))
@@ -150,12 +159,12 @@ class DMControlDataset:
         # Load state
         if 'observation' in self.h5:
             state = torch.tensor(
-                np.array(self.h5['observation'][row_indices]),
+                self._read_slice(self.h5['observation'], row_indices),
                 dtype=torch.float32,
             )
         elif 'qpos' in self.h5:
-            qpos = np.array(self.h5['qpos'][row_indices])
-            qvel = np.array(self.h5['qvel'][row_indices])
+            qpos = self._read_slice(self.h5['qpos'], row_indices)
+            qvel = self._read_slice(self.h5['qvel'], row_indices)
             state = torch.tensor(np.concatenate([qpos, qvel], axis=-1), dtype=torch.float32)
         else:
             state = torch.zeros(len(row_indices), 0)
