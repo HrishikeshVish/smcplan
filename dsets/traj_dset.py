@@ -3,26 +3,20 @@ import torch
 import numpy as np
 from torch.utils.data import Dataset
 from typing import Optional, Sequence, List
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, Subset as _Subset
 from torch import default_generator, randperm
 from einops import rearrange
 
 
-class Subset(Dataset):
-    def __init__(self, dataset, indices):
-        self.dataset = dataset
-        self.indices = indices
-
+class Subset(_Subset):
     def __getitem__(self, idx, start=0, end=None, frameskip=1):
         if isinstance(idx, list):
+            # return self.dataset[[self.indices[i] for i in idx]]
             raise NotImplementedError
         _idx = self.indices[idx]
         if end is None:
             end = self.dataset.get_seq_length(_idx)
         return self.dataset.__getitem__(_idx, start, end, frameskip)
-
-    def __len__(self):
-        return len(self.indices)
 
 # https://github.com/JaidedAI/EasyOCR/issues/1243
 def _accumulate(iterable, fn=lambda x, y: x + y):
