@@ -160,7 +160,6 @@ class LatentDynamicalHJB:
         # Directed random-walk Laplacian: L = I - P
         W_0 = sp.csr_matrix((data, (row_idx, col_idx)), shape=(N, N))
         W_0.setdiag(0)
-        self.W_graph = W_0  # store for heat method gradient computation
 
         d = np.array(W_0.sum(axis=1)).flatten() + 1e-8
         D_inv = sp.diags(1.0 / d)
@@ -188,8 +187,6 @@ class LatentDynamicalHJB:
         goal_indices = np.array([self.goal_idx])
 
         N = self.L_directed.shape[0]
-        D = self.z_buffer_np.shape[1]
-        z_np = self.z_buffer_np  # (N, D) node positions in scaled space
 
         # ===== Step 1: Heat diffusion from goal =====
         # Solve (I + t·L) u = δ_goal (one implicit Euler step)
@@ -210,63 +207,17 @@ class LatentDynamicalHJB:
         u = np.maximum(u, 1e-300)
         print(f"[Heat Method] Step 1 - u: min={u.min():.6e} max={u.max():.6e} mean={u.mean():.6e}")
 
-        # ===== Step 2: Normalized gradient field =====
-        # For each edge (i,j): compute weighted gradient contribution at node i
-        # grad_u(i) = Σ_j w_ij (u_j - u_i) (z_j - z_i)
-        # Then X(i) = -grad_u(i) / ||grad_u(i)||  (unit vector pointing toward goal)
-        W_coo = self.W_graph.tocoo()
-        rows, cols, weights = W_coo.row, W_coo.col, W_coo.data
-
-        du = u[cols] - u[rows]  # (E,)
-        edge_vecs = z_np[cols] - z_np[rows]  # (E, D)
-
-        # Weighted gradient contributions per edge
-        contributions = weights[:, None] * du[:, None] * edge_vecs  # (E, D)
-
-        # Accumulate at source nodes
-        grad_u = np.zeros((N, D))
-        np.add.at(grad_u, rows, contributions)
-
-        # Normalize to unit vectors pointing toward goal (negate since u is high at goal)
-        grad_norms = np.linalg.norm(grad_u, axis=1, keepdims=True)
-        X = -grad_u / (grad_norms + 1e-8)  # (N, D) unit vectors
-
-        print(f"[Heat Method] Step 2 - grad norms: min={grad_norms.min():.6e} max={grad_norms.max():.6e} mean={grad_norms.mean():.6e}")
-
-        # ===== Step 3: Solve Poisson L·φ = div(X) with φ(goal) = 0 =====
-        # div(X)(i) = 0.5 * Σ_j w_ij [(X_i + X_j)·(z_j - z_i)]
-        Xi_dot_e = np.sum(X[rows] * edge_vecs, axis=1)  # (E,)
-        Xj_dot_e = np.sum(X[cols] * edge_vecs, axis=1)  # (E,)
-        div_contributions = 0.5 * weights * (Xi_dot_e + Xj_dot_e)  # (E,)
-
-        div_X = np.zeros(N)
-        np.add.at(div_X, rows, div_contributions)
-
-        # Boundary masking: φ(goal) = 0
-        is_boundary = np.zeros(N, dtype=bool)
-        is_boundary[goal_indices] = True
-        I_mask = sp.diags((~is_boundary).astype(float))
-        I_bound = sp.diags(is_boundary.astype(float))
-
-        b_poisson = div_X.copy()
-        b_poisson[goal_indices] = 0.0
-
-        A_poisson = I_mask.dot(self.L_directed).dot(I_mask) + I_bound
-        M_poisson = sp.diags(1.0 / (A_poisson.diagonal() + 1e-8))
-        phi, info = spla.gmres(A_poisson, b_poisson, tol=1e-8, maxiter=5000, M=M_poisson)
-        if info != 0:
-            print(f"[Warning] Poisson GMRES exited with code {info}")
-
-        # Shift so goal = 0, clamp negatives
-        phi = phi - phi[self.goal_idx]
-        phi = np.maximum(phi, 0.0)
+        # ===== Convert heat to value function =====
+        # V = -log(u): high u (near goal) → low V, low u (far) → high V
+        V_raw = -np.log(u)
+        V_raw = V_raw - V_raw.min()  # shift so V(goal region) = 0
 
         # Normalize so mean matches phys_v_mean
-        scale_factor = phys_v_mean / (phi.mean() + 1e-8)
-        V_graph_np = phi * scale_factor
+        scale_factor = phys_v_mean / (V_raw.mean() + 1e-8)
+        V_graph_np = V_raw * scale_factor
         self.V_graph = torch.tensor(V_graph_np, dtype=torch.float32, device=self.device)
 
-        print(f"[Heat Method] Step 3 - phi_raw: min={phi.min():.4f} max={phi.max():.4f} mean={phi.mean():.4f} std={phi.std():.4f}")
+        print(f"[PDE Diagnostics] V_raw: min={V_raw.min():.4f} max={V_raw.max():.4f} mean={V_raw.mean():.4f} std={V_raw.std():.4f}")
         print(f"[PDE Diagnostics] V_graph: min={V_graph_np.min():.4f} max={V_graph_np.max():.4f} mean={V_graph_np.mean():.4f} std={V_graph_np.std():.4f}")
         print(f"[PDE Diagnostics] V at goal node: {V_graph_np[self.goal_idx]:.4f}")
 
