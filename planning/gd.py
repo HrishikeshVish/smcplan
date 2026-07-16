@@ -170,7 +170,7 @@ class LatentDynamicalHJB:
         print(f"[Graph Build] Connectivity: Capped at exactly {K_neighbors} edges per node.")
 
         # Asymmetric System Matrix
-        c_base = 0.1
+        c_base = 0.01
         C_matrix = sp.diags(np.full(N, c_base) / (2.0 * self.nu))
 
         self.A_asym = ((self.nu / (self.sigma_perturb ** 2)) * L_directed) + C_matrix
@@ -217,28 +217,25 @@ class LatentDynamicalHJB:
         if info != 0:
             print(f"[Warning] BiCGSTAB exited with code {info}")
 
-        # Reverse Hopf-Cole
-        Z_raw = np.maximum(Z_raw, 1e-300)
+        # Use raw PDE solution directly as value function:
+        # Z_raw is high at goal (1.0) and decays away. Invert so V=0 at goal, V>0 elsewhere.
+        Z_raw = np.maximum(Z_raw, 0.0)
         z_max = Z_raw.max()
-        if z_max > 1.0:
-            Z_raw /= z_max
+        if z_max > 0:
+            Z_norm = Z_raw / z_max  # Normalize to [0, 1], goal=1
+        else:
+            Z_norm = np.zeros_like(Z_raw)
 
-        Z_clipped = np.clip(Z_raw, 1e-300, 1.0)
-        V_raw = -2.0 * self.nu * np.log(Z_clipped)
-        scale_factor = phys_v_mean / (V_raw.mean() + 1e-8)
-        V_scaled = V_raw * scale_factor
+        # V = 1 - Z_norm: 0 at goal, approaches 1 far from goal
+        # Scale to give meaningful gradient magnitude
+        V_graph_np = (1.0 - Z_norm) * phys_v_mean
 
-        # Logarithmic Compression (Soft-Clipping)
-        tau = phys_v_mean * 2.0
-        V_compressed = tau * np.log1p(V_scaled / tau)
-        self.V_graph = torch.tensor(V_compressed, dtype=torch.float32, device=self.device)
+        self.V_graph = torch.tensor(V_graph_np, dtype=torch.float32, device=self.device)
 
         n_negative = (Z_raw <= 0).sum()
         print(f"[PDE Diagnostics] Z_raw: min={Z_raw.min():.6e} max={Z_raw.max():.6e} negative={n_negative}/{N}")
-        print(f"[PDE Diagnostics] V_raw: min={V_raw.min():.4f} max={V_raw.max():.4f} mean={V_raw.mean():.4f} std={V_raw.std():.4f}")
-        print(f"[PDE Diagnostics] V_scaled: min={V_scaled.min():.4f} max={V_scaled.max():.4f} mean={V_scaled.mean():.4f} std={V_scaled.std():.4f}")
-        print(f"[PDE Diagnostics] V_compressed: min={V_compressed.min():.4f} max={V_compressed.max():.4f} mean={V_compressed.mean():.4f} std={V_compressed.std():.4f}")
-        print(f"[PDE Diagnostics] V at goal node: {V_compressed[self.goal_idx]:.4f}")
+        print(f"[PDE Diagnostics] V_graph: min={V_graph_np.min():.4f} max={V_graph_np.max():.4f} mean={V_graph_np.mean():.4f} std={V_graph_np.std():.4f}")
+        print(f"[PDE Diagnostics] V at goal node: {V_graph_np[self.goal_idx]:.4f}")
 
         if not hasattr(self, 'v_surrogate'):
             self.v_surrogate = torch.nn.Sequential(
