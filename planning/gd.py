@@ -157,7 +157,7 @@ class LatentDynamicalHJB:
             col_idx = k_indices.cpu().numpy().flatten()
             data = W_local_np.flatten()
 
-        # Directed Advection-Diffusion Laplacian
+        # Directed random-walk Laplacian: L = I - P
         W_0 = sp.csr_matrix((data, (row_idx, col_idx)), shape=(N, N))
         W_0.setdiag(0)
 
@@ -165,16 +165,9 @@ class LatentDynamicalHJB:
         D_inv = sp.diags(1.0 / d)
 
         P = D_inv.dot(W_0)
-        L_directed = sp.eye(N) - P
+        self.L_directed = sp.eye(N) - P
 
         print(f"[Graph Build] Connectivity: Capped at exactly {K_neighbors} edges per node.")
-
-        # Asymmetric System Matrix
-        c_base = 0.01
-        C_matrix = sp.diags(np.full(N, c_base) / (2.0 * self.nu))
-
-        self.A_asym = ((self.nu / (self.sigma_perturb ** 2)) * L_directed) + C_matrix
-        self.A_asym += sp.diags(np.full(N, 1e-6))
 
         self.proj_mean = torch.tensor(self.scaler_obj.mean_, dtype=torch.float32, device=self.device)
         self.proj_std = torch.tensor(np.sqrt(self.scaler_obj.var_), dtype=torch.float32, device=self.device)
@@ -182,57 +175,47 @@ class LatentDynamicalHJB:
 
     def solve_for_goal(self, z_goal, phys_v_mean=10.0):
         """
-        Solves the asymmetric linear PDE using BiCGSTAB.
+        Solves the Poisson equation L·V = 1 with V(goal) = 0.
+        V = expected hitting time (random-walk distance to goal).
+        No Hopf-Cole, no discount — V scales linearly with graph distance.
         """
         z_goal_proj = self.scaler_obj.transform(z_goal.reshape(1, -1))
         goal_dists = np.linalg.norm(self.z_buffer_np - z_goal_proj, axis=1)
 
         self.goal_idx = np.argmin(goal_dists)
         goal_indices = np.array([self.goal_idx])
-        goal_weights = np.array([1.0])
 
-        N = self.A_asym.shape[0]
+        N = self.L_directed.shape[0]
 
-        # Flux Vector Calculation
-        W_bound = sp.csr_matrix((goal_weights, (goal_indices, np.zeros_like(goal_indices))), shape=(N, 1))
-        flux_vector = self.A_asym.dot(W_bound).toarray().flatten()
+        # RHS: constant source (unit cost per step) for interior nodes
+        b = np.ones(N)
+        b[goal_indices] = 0.0  # V(goal) = 0
 
-        b = np.zeros(N)
-        b -= flux_vector
-        b[goal_indices] = goal_weights
-
-        # Boundary Masking
+        # Boundary masking: enforce V(goal) = 0
         is_boundary = np.zeros(N, dtype=bool)
         is_boundary[goal_indices] = True
 
         I_mask = sp.diags((~is_boundary).astype(float))
         I_bound = sp.diags(is_boundary.astype(float))
 
-        A_solve = I_mask.dot(self.A_asym).dot(I_mask) + I_bound
+        A_solve = I_mask.dot(self.L_directed).dot(I_mask) + I_bound
 
-        # Preconditioned BiCGSTAB Solve (Required for Asymmetric A)
+        # Preconditioned BiCGSTAB
         M_solve = sp.diags(1.0 / (A_solve.diagonal() + 1e-8))
-        Z_raw, info = spla.bicgstab(A_solve, b, tol=1e-10, maxiter=5000, M=M_solve)
+        V_raw, info = spla.bicgstab(A_solve, b, tol=1e-10, maxiter=5000, M=M_solve)
 
         if info != 0:
             print(f"[Warning] BiCGSTAB exited with code {info}")
 
-        # Hopf-Cole inversion: V = -2ν·log(Z) maps exponential Z decay to linear V scale
-        Z_raw = np.maximum(Z_raw, 1e-300)
-        z_max = Z_raw.max()
-        if z_max > 1.0:
-            Z_raw /= z_max
+        # Clamp any negative values (numerical artifacts)
+        V_raw = np.maximum(V_raw, 0.0)
 
-        Z_clipped = np.clip(Z_raw, 1e-300, 1.0)
-        V_raw = -2.0 * self.nu * np.log(Z_clipped)
-
-        # Normalize so mean matches phys_v_mean (no log compression)
+        # Normalize so mean matches phys_v_mean
         scale_factor = phys_v_mean / (V_raw.mean() + 1e-8)
         V_graph_np = V_raw * scale_factor
         self.V_graph = torch.tensor(V_graph_np, dtype=torch.float32, device=self.device)
 
-        n_negative = (Z_raw <= 0).sum()
-        print(f"[PDE Diagnostics] Z_raw: min={Z_raw.min():.6e} max={Z_raw.max():.6e} negative={n_negative}/{N}")
+        print(f"[PDE Diagnostics] V_raw: min={V_raw.min():.4f} max={V_raw.max():.4f} mean={V_raw.mean():.4f} std={V_raw.std():.4f}")
         print(f"[PDE Diagnostics] V_graph: min={V_graph_np.min():.4f} max={V_graph_np.max():.4f} mean={V_graph_np.mean():.4f} std={V_graph_np.std():.4f}")
         print(f"[PDE Diagnostics] V at goal node: {V_graph_np[self.goal_idx]:.4f}")
 
@@ -243,13 +226,13 @@ class LatentDynamicalHJB:
                 torch.nn.Linear(256, 256),
                 torch.nn.Mish(),
                 torch.nn.Linear(256, 1),
-                torch.nn.Softplus()
+                torch.nn.ReLU()  # V >= 0 by construction, ReLU can represent V=0 at goal
             ).to(self.device)
 
         optimizer = torch.optim.Adam(self.v_surrogate.parameters(), lr=5e-3)
 
         self.v_surrogate.train()
-        for _ in range(250):
+        for _ in range(500):
             optimizer.zero_grad()
             pred_v = self.v_surrogate(self.graph_nodes).squeeze()
             loss = torch.nn.functional.mse_loss(pred_v, self.V_graph)
