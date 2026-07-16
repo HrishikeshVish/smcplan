@@ -217,19 +217,18 @@ class LatentDynamicalHJB:
         if info != 0:
             print(f"[Warning] BiCGSTAB exited with code {info}")
 
-        # Use raw PDE solution directly as value function:
-        # Z_raw is high at goal (1.0) and decays away. Invert so V=0 at goal, V>0 elsewhere.
-        Z_raw = np.maximum(Z_raw, 0.0)
+        # Hopf-Cole inversion: V = -2ν·log(Z) maps exponential Z decay to linear V scale
+        Z_raw = np.maximum(Z_raw, 1e-300)
         z_max = Z_raw.max()
-        if z_max > 0:
-            Z_norm = Z_raw / z_max  # Normalize to [0, 1], goal=1
-        else:
-            Z_norm = np.zeros_like(Z_raw)
+        if z_max > 1.0:
+            Z_raw /= z_max
 
-        # V = 1 - Z_norm: 0 at goal, approaches 1 far from goal
-        # Scale to give meaningful gradient magnitude
-        V_graph_np = (1.0 - Z_norm) * phys_v_mean
+        Z_clipped = np.clip(Z_raw, 1e-300, 1.0)
+        V_raw = -2.0 * self.nu * np.log(Z_clipped)
 
+        # Normalize so mean matches phys_v_mean (no log compression)
+        scale_factor = phys_v_mean / (V_raw.mean() + 1e-8)
+        V_graph_np = V_raw * scale_factor
         self.V_graph = torch.tensor(V_graph_np, dtype=torch.float32, device=self.device)
 
         n_negative = (Z_raw <= 0).sum()
