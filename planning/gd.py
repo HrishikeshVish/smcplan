@@ -507,14 +507,34 @@ class GDPlanner(BasePlanner):
             # Objective loss
             loss = self.objective_fn(i_z_obses, z_obs_g_detached, final_noisy_actions)
 
-            # HJB cost-to-go at terminal state
-            terminal_latent = latent_rollout[:, -1, :]
-            v_val = self.latent_hjb_solver.evaluate_rollout(terminal_latent)
+            # HJB ∇_x V guidance along trajectory
             tau = self.hjb_tau
-            v_val = (torch.logsumexp(v_val / tau, dim=0)) * tau
-            loss = loss + tau * v_val.mean()
 
-            print(f"Step {i + 1} | MSE Loss: {loss.item():.4f} | Metric Value: {v_val.mean().item():.4f} | Metric Min: {v_val.min().item():.4f} | Metric Max: {v_val.max().item():.4f}")
+            # Compute ∇_x V at non-terminal states (detached: treat as fixed target direction)
+            with torch.enable_grad():
+                states_detached = latent_rollout[:, :-1, :].detach().requires_grad_(True)
+                V_states = self.latent_hjb_solver.evaluate_rollout(
+                    states_detached.reshape(-1, D)
+                )
+                grad_V = torch.autograd.grad(V_states.sum(), states_detached, create_graph=False)[0]
+                # grad_V: (B, T-1, D), detached since create_graph=False
+
+            # Normalize to unit direction (avoids scale domination from steep regions)
+            grad_V_dir = grad_V / (grad_V.norm(dim=-1, keepdim=True) + 1e-8)
+
+            # State transitions (connected to actions through the world model)
+            dx = latent_rollout[:, 1:, :] - latent_rollout[:, :-1, :]
+
+            # Directional derivative: ∇V · dx > 0 means V increasing (bad)
+            nabla_v_loss = (grad_V_dir * dx).sum(dim=-1).mean()
+
+            # Terminal V as global anchor
+            terminal_latent = latent_rollout[:, -1, :]
+            v_terminal = self.latent_hjb_solver.evaluate_rollout(terminal_latent)
+
+            loss = loss + tau * nabla_v_loss + tau * v_terminal.mean()
+
+            print(f"Step {i + 1} | MSE Loss: {loss.item():.4f} | ∇V·dx: {nabla_v_loss.item():.4f} | V_terminal: {v_terminal.mean().item():.4f}")
 
             # Backpropagate
             total_loss = loss.mean() * self.num_samples
