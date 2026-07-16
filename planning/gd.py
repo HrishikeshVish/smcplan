@@ -221,6 +221,12 @@ class LatentDynamicalHJB:
         print(f"[PDE Diagnostics] V_graph: min={V_graph_np.min():.4f} max={V_graph_np.max():.4f} mean={V_graph_np.mean():.4f} std={V_graph_np.std():.4f}")
         print(f"[PDE Diagnostics] V at goal node: {V_graph_np[self.goal_idx]:.4f}")
 
+        # Sanity check: does V correlate with Euclidean distance to goal on graph nodes?
+        euclid_dists = np.linalg.norm(self.z_buffer_np - self.z_buffer_np[self.goal_idx], axis=1)
+        from scipy.stats import spearmanr
+        corr, pval = spearmanr(V_graph_np, euclid_dists)
+        print(f"[V Sanity Check] Spearman(V, ||z-z_goal||) = {corr:.4f} (p={pval:.2e})")
+
         if not hasattr(self, 'v_surrogate'):
             self.v_surrogate = torch.nn.Sequential(
                 torch.nn.Linear(self.graph_nodes.shape[1], 256),
