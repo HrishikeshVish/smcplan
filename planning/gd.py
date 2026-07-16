@@ -487,21 +487,15 @@ class GDPlanner(BasePlanner):
             # Objective loss
             loss = self.objective_fn(i_z_obses, z_obs_g_detached, final_noisy_actions)
 
-            # HJB cost-to-go along full trajectory
+            # HJB cost-to-go at terminal state only
             tau = self.hjb_tau
 
-            # Evaluate V at all timesteps (gradients flow through world model)
-            flat_latents = latent_rollout.reshape(-1, D)
-            V_all = self.latent_hjb_solver.evaluate_rollout(flat_latents)
-            V_traj = V_all.reshape(B, T)
+            terminal_latent = latent_rollout[:, -1, :]
+            v_terminal = self.latent_hjb_solver.evaluate_rollout(terminal_latent)
 
-            # Weighted: later timesteps matter more (terminal emphasis)
-            weights = torch.linspace(0.2, 1.0, steps=T, device=self.device)
-            v_loss = (V_traj * weights).mean()
+            loss = loss + tau * v_terminal.mean()
 
-            loss = loss + tau * v_loss
-
-            print(f"Step {i + 1} | MSE Loss: {loss.item():.4f} | V_mean: {V_traj.mean().item():.4f} | V_terminal: {V_traj[:,-1].mean().item():.4f}")
+            print(f"Step {i + 1} | MSE Loss: {loss.item():.4f} | V_terminal: {v_terminal.mean().item():.4f}")
 
             # Backpropagate
             total_loss = loss.mean() * self.num_samples
