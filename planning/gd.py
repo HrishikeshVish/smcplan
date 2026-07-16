@@ -227,45 +227,25 @@ class LatentDynamicalHJB:
         corr, pval = spearmanr(V_graph_np, euclid_dists)
         print(f"[V Sanity Check] Spearman(V, ||z-z_goal||) = {corr:.4f} (p={pval:.2e})")
 
-        if not hasattr(self, 'v_surrogate'):
-            self.v_surrogate = torch.nn.Sequential(
-                torch.nn.Linear(self.graph_nodes.shape[1], 256),
-                torch.nn.Mish(),
-                torch.nn.Linear(256, 256),
-                torch.nn.Mish(),
-                torch.nn.Linear(256, 1),
-                torch.nn.ReLU()  # V >= 0 by construction, ReLU can represent V=0 at goal
-            ).to(self.device)
-
-        optimizer = torch.optim.Adam(self.v_surrogate.parameters(), lr=5e-3)
-
-        self.v_surrogate.train()
-        for _ in range(500):
-            optimizer.zero_grad()
-            pred_v = self.v_surrogate(self.graph_nodes).squeeze()
-            loss = torch.nn.functional.mse_loss(pred_v, self.V_graph)
-            loss.backward()
-            optimizer.step()
-
-        self.v_surrogate.eval()
-        with torch.no_grad():
-            final_pred = self.v_surrogate(self.graph_nodes).squeeze()
-            fit_mse = torch.nn.functional.mse_loss(final_pred, self.V_graph).item()
-            fit_max_err = (final_pred - self.V_graph).abs().max().item()
-            print(f"[Surrogate Fit] MSE={fit_mse:.6f} MaxErr={fit_max_err:.4f} PredRange=[{final_pred.min().item():.4f}, {final_pred.max().item():.4f}]")
-        for p in self.v_surrogate.parameters():
-            p.requires_grad = False
-
         return self.V_graph
 
-    def evaluate_rollout(self, z_generated):
+    def evaluate_rollout(self, z_generated, k=4, temperature=0.05):
         """
-        Provides analytical gradients while penalizing out-of-distribution states.
+        Differentiable K-NN interpolation of V_graph.
+        Gradients flow through softmax weights → through input positions.
         """
         z_scaled = (z_generated - self.proj_mean) / (self.proj_std + 1e-8)
 
-        with torch.enable_grad():
-            V_interp = self.v_surrogate(z_scaled).squeeze(-1)
+        # Find k nearest graph nodes
+        dists = torch.cdist(z_scaled, self.graph_nodes)  # (B, N)
+        k_dists, k_indices = torch.topk(-dists, k=k, dim=1)
+        k_dists = -k_dists  # (B, k)
+
+        # Sharp softmax: nearest neighbor dominates
+        weights = torch.softmax(-k_dists / temperature, dim=-1)  # (B, k)
+
+        # Weighted interpolation of graph V values
+        V_interp = (weights * self.V_graph[k_indices]).sum(dim=1)  # (B,)
 
         return V_interp
 
