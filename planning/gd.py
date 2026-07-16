@@ -160,6 +160,7 @@ class LatentDynamicalHJB:
         # Directed random-walk Laplacian: L = I - P
         W_0 = sp.csr_matrix((data, (row_idx, col_idx)), shape=(N, N))
         W_0.setdiag(0)
+        self.W_graph = W_0  # store for heat method gradient computation
 
         d = np.array(W_0.sum(axis=1)).flatten() + 1e-8
         D_inv = sp.diags(1.0 / d)
@@ -175,9 +176,10 @@ class LatentDynamicalHJB:
 
     def solve_for_goal(self, z_goal, phys_v_mean=10.0):
         """
-        Solves the Poisson equation L·V = 1 with V(goal) = 0.
-        V = expected hitting time (random-walk distance to goal).
-        No Hopf-Cole, no discount — V scales linearly with graph distance.
+        Heat method (Crane et al. 2013) for geodesic distances on the graph.
+        Step 1: Diffuse heat from goal for short time t
+        Step 2: Normalize gradient field to unit vectors toward goal
+        Step 3: Solve Poisson equation on divergence to recover geodesic distance
         """
         z_goal_proj = self.scaler_obj.transform(z_goal.reshape(1, -1))
         goal_dists = np.linalg.norm(self.z_buffer_np - z_goal_proj, axis=1)
@@ -186,36 +188,82 @@ class LatentDynamicalHJB:
         goal_indices = np.array([self.goal_idx])
 
         N = self.L_directed.shape[0]
+        D = self.z_buffer_np.shape[1]
+        z_np = self.z_buffer_np  # (N, D) node positions in scaled space
 
-        # RHS: constant source (unit cost per step) for interior nodes
-        b = np.ones(N)
-        b[goal_indices] = 0.0  # V(goal) = 0
+        # ===== Step 1: Heat diffusion from goal =====
+        # Solve (I + t·L) u = δ_goal (one implicit Euler step)
+        t = self.sigma_perturb ** 2  # Crane's recommendation: t = h² (avg edge length²)
 
-        # Boundary masking: enforce V(goal) = 0
+        b_heat = np.zeros(N)
+        b_heat[self.goal_idx] = 1.0
+
+        A_heat = sp.eye(N) + t * self.L_directed
+        M_heat = sp.diags(1.0 / (A_heat.diagonal() + 1e-8))
+        u, info = spla.bicgstab(A_heat, b_heat, tol=1e-10, maxiter=5000, M=M_heat)
+        if info != 0:
+            print(f"[Warning] Heat diffusion BiCGSTAB exited with code {info}")
+
+        u = np.maximum(u, 1e-300)
+        print(f"[Heat Method] Step 1 - u: min={u.min():.6e} max={u.max():.6e} mean={u.mean():.6e}")
+
+        # ===== Step 2: Normalized gradient field =====
+        # For each edge (i,j): compute weighted gradient contribution at node i
+        # grad_u(i) = Σ_j w_ij (u_j - u_i) (z_j - z_i)
+        # Then X(i) = -grad_u(i) / ||grad_u(i)||  (unit vector pointing toward goal)
+        W_coo = self.W_graph.tocoo()
+        rows, cols, weights = W_coo.row, W_coo.col, W_coo.data
+
+        du = u[cols] - u[rows]  # (E,)
+        edge_vecs = z_np[cols] - z_np[rows]  # (E, D)
+
+        # Weighted gradient contributions per edge
+        contributions = weights[:, None] * du[:, None] * edge_vecs  # (E, D)
+
+        # Accumulate at source nodes
+        grad_u = np.zeros((N, D))
+        np.add.at(grad_u, rows, contributions)
+
+        # Normalize to unit vectors pointing toward goal (negate since u is high at goal)
+        grad_norms = np.linalg.norm(grad_u, axis=1, keepdims=True)
+        X = -grad_u / (grad_norms + 1e-8)  # (N, D) unit vectors
+
+        print(f"[Heat Method] Step 2 - grad norms: min={grad_norms.min():.6e} max={grad_norms.max():.6e} mean={grad_norms.mean():.6e}")
+
+        # ===== Step 3: Solve Poisson L·φ = div(X) with φ(goal) = 0 =====
+        # div(X)(i) = 0.5 * Σ_j w_ij [(X_i + X_j)·(z_j - z_i)]
+        Xi_dot_e = np.sum(X[rows] * edge_vecs, axis=1)  # (E,)
+        Xj_dot_e = np.sum(X[cols] * edge_vecs, axis=1)  # (E,)
+        div_contributions = 0.5 * weights * (Xi_dot_e + Xj_dot_e)  # (E,)
+
+        div_X = np.zeros(N)
+        np.add.at(div_X, rows, div_contributions)
+
+        # Boundary masking: φ(goal) = 0
         is_boundary = np.zeros(N, dtype=bool)
         is_boundary[goal_indices] = True
-
         I_mask = sp.diags((~is_boundary).astype(float))
         I_bound = sp.diags(is_boundary.astype(float))
 
-        A_solve = I_mask.dot(self.L_directed).dot(I_mask) + I_bound
+        b_poisson = div_X.copy()
+        b_poisson[goal_indices] = 0.0
 
-        # Preconditioned BiCGSTAB
-        M_solve = sp.diags(1.0 / (A_solve.diagonal() + 1e-8))
-        V_raw, info = spla.bicgstab(A_solve, b, tol=1e-10, maxiter=5000, M=M_solve)
-
+        A_poisson = I_mask.dot(self.L_directed).dot(I_mask) + I_bound
+        M_poisson = sp.diags(1.0 / (A_poisson.diagonal() + 1e-8))
+        phi, info = spla.bicgstab(A_poisson, b_poisson, tol=1e-10, maxiter=5000, M=M_poisson)
         if info != 0:
-            print(f"[Warning] BiCGSTAB exited with code {info}")
+            print(f"[Warning] Poisson BiCGSTAB exited with code {info}")
 
-        # Clamp any negative values (numerical artifacts)
-        V_raw = np.maximum(V_raw, 0.0)
+        # Shift so goal = 0, clamp negatives
+        phi = phi - phi[self.goal_idx]
+        phi = np.maximum(phi, 0.0)
 
         # Normalize so mean matches phys_v_mean
-        scale_factor = phys_v_mean / (V_raw.mean() + 1e-8)
-        V_graph_np = V_raw * scale_factor
+        scale_factor = phys_v_mean / (phi.mean() + 1e-8)
+        V_graph_np = phi * scale_factor
         self.V_graph = torch.tensor(V_graph_np, dtype=torch.float32, device=self.device)
 
-        print(f"[PDE Diagnostics] V_raw: min={V_raw.min():.4f} max={V_raw.max():.4f} mean={V_raw.mean():.4f} std={V_raw.std():.4f}")
+        print(f"[Heat Method] Step 3 - phi_raw: min={phi.min():.4f} max={phi.max():.4f} mean={phi.mean():.4f} std={phi.std():.4f}")
         print(f"[PDE Diagnostics] V_graph: min={V_graph_np.min():.4f} max={V_graph_np.max():.4f} mean={V_graph_np.mean():.4f} std={V_graph_np.std():.4f}")
         print(f"[PDE Diagnostics] V at goal node: {V_graph_np[self.goal_idx]:.4f}")
 
