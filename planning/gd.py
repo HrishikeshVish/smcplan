@@ -226,11 +226,19 @@ class LatentDynamicalHJB:
         Z_clipped = np.clip(Z_raw, 1e-300, 1.0)
         V_raw = -2.0 * self.nu * np.log(Z_clipped)
         scale_factor = phys_v_mean / (V_raw.mean() + 1e-8)
-        self.V_graph = torch.tensor(V_raw * scale_factor, dtype=torch.float32, device=self.device)
+        V_scaled = V_raw * scale_factor
 
         # Logarithmic Compression (Soft-Clipping)
         tau = phys_v_mean * 2.0
-        self.V_graph = tau * torch.log1p(self.V_graph / tau)
+        V_compressed = tau * np.log1p(V_scaled / tau)
+        self.V_graph = torch.tensor(V_compressed, dtype=torch.float32, device=self.device)
+
+        n_negative = (Z_raw <= 0).sum()
+        print(f"[PDE Diagnostics] Z_raw: min={Z_raw.min():.6e} max={Z_raw.max():.6e} negative={n_negative}/{N}")
+        print(f"[PDE Diagnostics] V_raw: min={V_raw.min():.4f} max={V_raw.max():.4f} mean={V_raw.mean():.4f} std={V_raw.std():.4f}")
+        print(f"[PDE Diagnostics] V_scaled: min={V_scaled.min():.4f} max={V_scaled.max():.4f} mean={V_scaled.mean():.4f} std={V_scaled.std():.4f}")
+        print(f"[PDE Diagnostics] V_compressed: min={V_compressed.min():.4f} max={V_compressed.max():.4f} mean={V_compressed.mean():.4f} std={V_compressed.std():.4f}")
+        print(f"[PDE Diagnostics] V at goal node: {V_compressed[self.goal_idx]:.4f}")
 
         if not hasattr(self, 'v_surrogate'):
             self.v_surrogate = torch.nn.Sequential(
@@ -253,6 +261,11 @@ class LatentDynamicalHJB:
             optimizer.step()
 
         self.v_surrogate.eval()
+        with torch.no_grad():
+            final_pred = self.v_surrogate(self.graph_nodes).squeeze()
+            fit_mse = torch.nn.functional.mse_loss(final_pred, self.V_graph).item()
+            fit_max_err = (final_pred - self.V_graph).abs().max().item()
+            print(f"[Surrogate Fit] MSE={fit_mse:.6f} MaxErr={fit_max_err:.4f} PredRange=[{final_pred.min().item():.4f}, {final_pred.max().item():.4f}]")
         for p in self.v_surrogate.parameters():
             p.requires_grad = False
 
