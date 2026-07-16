@@ -193,16 +193,19 @@ class LatentDynamicalHJB:
 
         # ===== Step 1: Heat diffusion from goal =====
         # Solve (I + t·L) u = δ_goal (one implicit Euler step)
-        t = self.sigma_perturb ** 2  # Crane's recommendation: t = h² (avg edge length²)
+        # t = h² * multiplier: must be large enough for heat to reach all nodes
+        h2 = self.sigma_perturb ** 2
+        t = h2 * 500  # ~500x local scale to ensure graph-wide spread
+        print(f"[Heat Method] sigma_perturb={self.sigma_perturb:.6f}, h²={h2:.6f}, t={t:.2f}")
 
         b_heat = np.zeros(N)
         b_heat[self.goal_idx] = 1.0
 
         A_heat = sp.eye(N) + t * self.L_directed
         M_heat = sp.diags(1.0 / (A_heat.diagonal() + 1e-8))
-        u, info = spla.bicgstab(A_heat, b_heat, tol=1e-10, maxiter=5000, M=M_heat)
+        u, info = spla.gmres(A_heat, b_heat, tol=1e-8, maxiter=5000, M=M_heat)
         if info != 0:
-            print(f"[Warning] Heat diffusion BiCGSTAB exited with code {info}")
+            print(f"[Warning] Heat diffusion GMRES exited with code {info}")
 
         u = np.maximum(u, 1e-300)
         print(f"[Heat Method] Step 1 - u: min={u.min():.6e} max={u.max():.6e} mean={u.mean():.6e}")
@@ -250,9 +253,9 @@ class LatentDynamicalHJB:
 
         A_poisson = I_mask.dot(self.L_directed).dot(I_mask) + I_bound
         M_poisson = sp.diags(1.0 / (A_poisson.diagonal() + 1e-8))
-        phi, info = spla.bicgstab(A_poisson, b_poisson, tol=1e-10, maxiter=5000, M=M_poisson)
+        phi, info = spla.gmres(A_poisson, b_poisson, tol=1e-8, maxiter=5000, M=M_poisson)
         if info != 0:
-            print(f"[Warning] Poisson BiCGSTAB exited with code {info}")
+            print(f"[Warning] Poisson GMRES exited with code {info}")
 
         # Shift so goal = 0, clamp negatives
         phi = phi - phi[self.goal_idx]
