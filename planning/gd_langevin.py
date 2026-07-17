@@ -290,8 +290,6 @@ class GDLangevinPlanner(BasePlanner):
             v_val = (torch.logsumexp(v_val / tau, dim=0)) * tau
             loss = loss + tau * v_val.mean()
 
-            print(f"Step {i + 1} | Loss: {loss.item():.4f} | V mean: {v_val.mean().item():.4f} | V min: {v_val.min().item():.4f} | V max: {v_val.max().item():.4f}")
-
             total_loss = loss.mean() * self.num_samples
             total_loss.backward()
             optimizer.step()
