@@ -229,10 +229,10 @@ class LatentDynamicalHJB:
 
         return self.V_graph
 
-    def evaluate_rollout(self, z_generated, k=4, temperature=0.05):
+    def evaluate_rollout(self, z_generated, k=4):
         """
         Differentiable K-NN interpolation of V_graph.
-        Gradients flow through softmax weights → through input positions.
+        Uses inverse-distance weighting for smooth, non-saturating gradients.
         """
         z_scaled = (z_generated - self.proj_mean) / (self.proj_std + 1e-8)
 
@@ -241,8 +241,9 @@ class LatentDynamicalHJB:
         k_dists, k_indices = torch.topk(-dists, k=k, dim=1)
         k_dists = -k_dists  # (B, k)
 
-        # Sharp softmax: nearest neighbor dominates
-        weights = torch.softmax(-k_dists / temperature, dim=-1)  # (B, k)
+        # Inverse-distance weighting: w_i = (1/d_i) / sum(1/d_j)
+        inv_dists = 1.0 / (k_dists + 1e-6)
+        weights = inv_dists / inv_dists.sum(dim=-1, keepdim=True)  # (B, k)
 
         # Weighted interpolation of graph V values
         V_interp = (weights * self.V_graph[k_indices]).sum(dim=1)  # (B,)
