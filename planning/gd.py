@@ -488,15 +488,20 @@ class GDPlanner(BasePlanner):
             # Objective loss
             loss = self.objective_fn(i_z_obses, z_obs_g_detached, final_noisy_actions)
 
-            # HJB cost-to-go at terminal state only
+            # HJB: use ∇_z V at terminal state as explicit gradient direction
             tau = self.hjb_tau
 
             terminal_latent = latent_rollout[:, -1, :]
-            v_terminal = self.latent_hjb_solver.evaluate_rollout(terminal_latent)
 
-            loss = loss + tau * v_terminal.mean()
+            # Compute ∇_z V on a detached copy for a clean gradient
+            z_for_grad = terminal_latent.detach().requires_grad_(True)
+            v_terminal = self.latent_hjb_solver.evaluate_rollout(z_for_grad)
+            grad_v = torch.autograd.grad(v_terminal.sum(), z_for_grad)[0]  # (B, D)
 
-            print(f"Step {i + 1} | MSE Loss: {loss.item():.4f} | V_terminal: {v_terminal.mean().item():.4f}")
+            # Surrogate loss: backprop gives ∂/∂actions = grad_v · (∂z_T/∂actions)
+            loss = loss + tau * (grad_v.detach() * terminal_latent).sum(dim=-1).mean()
+
+            print(f"Step {i + 1} | MSE Loss: {loss.item():.4f} | V_terminal: {v_terminal.mean().item():.4f} | |∇V|: {grad_v.norm(dim=-1).mean().item():.4f}")
 
             # Backpropagate
             total_loss = loss.mean() * self.num_samples
