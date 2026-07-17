@@ -3,17 +3,17 @@ horizon: 5
 sample_type: 'zero'
 
 lr: 0.1
-opt_steps: 1000
-eval_every: 10
-var_actions: 0.0
+opt_steps: 300
+eval_every: 1
+var_actions: 1.0
 var_states: 0.0
-num_samples: 1
+num_samples: 8
 action_clamp: 0
 action_reg: 0.1
 
 replay_buffer_path: /scratch/gilbreth/hviswan/grasp/latent_buffers/lewm_reacher_buffer.pt
 latent_key: visual
 
-hjb_tau: 0.1
+hjb_tau: 0.0
 
 name: gd_reacher
