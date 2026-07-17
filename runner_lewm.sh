@@ -6,14 +6,14 @@ LOG_FILE="seed_success_log.txt"
 # Clear the log file if it exists from a previous run
 > "$LOG_FILE"
 
-NUM_SEEDS=300
+NUM_SEEDS=100
 echo "Starting LeWM reacher evaluation across $NUM_SEEDS seeds..."
 echo "---------------------------------------"
 
 for seed in $(seq 1 $NUM_SEEDS); do
     echo "Running Seed: $seed..."
 
-    python plan.py model_name=lewm_reacher n_evals=1 planner=cem goal_H=5 goal_source='dset' seed=$seed save_images=False
+    python plan.py model_name=lewm_reacher n_evals=1 planner=gd_reacher goal_H=5 goal_source='dset' seed=$seed save_images=False planner.opt_steps=150
 
     if [ -f "$LOG_FILE" ]; then
         LATEST_SCORE=$(tail -n 1 "$LOG_FILE")
