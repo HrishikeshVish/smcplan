@@ -109,7 +109,7 @@ class LatentDynamicalHJB:
         self.v_surrogate = None
 
     def compile_environment(self, z_buffer, z_predicted_next=None, n_nodes=None,
-                             K_neighbors=32, mc_candidates=2048, chunk_size=8192):
+                             K_neighbors=32, mc_candidates=4096, chunk_size=8192):
         """
         Builds an undirected reachability graph using Monte Carlo mollified K-NN.
 
@@ -145,48 +145,39 @@ class LatentDynamicalHJB:
 
         t0 = _time.perf_counter()
 
-        # Monte Carlo mollified K-NN: for each z_next[i], find its K nearest
-        # graph nodes by sampling mc_candidates random candidates per chunk.
-        # Multiple rounds with different samples improve recall.
         z_next_tensor = torch.tensor(z_next_scaled, dtype=torch.float32, device=self.device)
 
-        # We'll collect the best K neighbors across rounds
+        # MC mollified K-NN: for each z_next[i], estimate K nearest graph nodes
+        # by sampling mc_candidates random candidates per round. Avoids the
+        # O(N^2) full cdist that OOMs above ~55K nodes.
+        # Cap rounds at 50: 50 * 4096 = 200K candidates sampled, sufficient
+        # coverage even for N ~ 1M (each node seen ~10x on average).
         all_k_dists = torch.full((N, K_neighbors), float('inf'), device=self.device)
         all_k_indices = torch.zeros((N, K_neighbors), dtype=torch.long, device=self.device)
-
-        n_rounds = max(1, N // mc_candidates)  # enough rounds to see most nodes
+        n_rounds = min(50, max(1, N // mc_candidates))
         rng = np.random.RandomState(42)
 
         with torch.no_grad():
             for r in range(n_rounds):
-                # Sample a random subset of graph nodes as candidates
                 cand_idx = torch.tensor(
                     rng.choice(N, min(mc_candidates, N), replace=False),
                     device=self.device
                 )
-                cand_nodes = self.graph_nodes[cand_idx]  # (mc_candidates, D)
+                cand_nodes = self.graph_nodes[cand_idx]
 
-                # Process in chunks to control GPU memory
                 for start in range(0, N, chunk_size):
                     end = min(start + chunk_size, N)
-                    chunk_next = z_next_tensor[start:end]  # (chunk, D)
-
-                    # Distances to candidates only: (chunk, mc_candidates)
-                    dists = torch.cdist(chunk_next, cand_nodes)
+                    dists = torch.cdist(z_next_tensor[start:end], cand_nodes)
                     ck = min(K_neighbors, dists.shape[1])
                     chunk_k_dists, chunk_k_local = torch.topk(-dists, k=ck, dim=1)
                     chunk_k_dists = -chunk_k_dists
                     chunk_k_indices = cand_idx[chunk_k_local]
 
-                    # Merge with best-so-far
                     merged_dists = torch.cat([all_k_dists[start:end], chunk_k_dists], dim=1)
                     merged_indices = torch.cat([all_k_indices[start:end], chunk_k_indices], dim=1)
                     best_dists, best_pos = torch.topk(-merged_dists, k=K_neighbors, dim=1)
-                    best_dists = -best_dists
-                    best_indices = merged_indices.gather(1, best_pos)
-
-                    all_k_dists[start:end] = best_dists
-                    all_k_indices[start:end] = best_indices
+                    all_k_dists[start:end] = -best_dists
+                    all_k_indices[start:end] = merged_indices.gather(1, best_pos)
 
             # Adaptive local bandwidth from nearest-neighbor distance
             local_sigma = all_k_dists[:, 1].unsqueeze(1) * 2.0
@@ -217,9 +208,8 @@ class LatentDynamicalHJB:
 
         t_graph = _time.perf_counter() - t1
 
-        print(f"[Graph Build] N={N}, K={K_neighbors}, mc_cand={mc_candidates}, "
-              f"rounds={n_rounds}, sigma_perturb={self.sigma_perturb:.6f}")
-        print(f"[Graph Build] MC K-NN: {t_knn:.2f}s, Sparse build: {t_graph:.2f}s")
+        print(f"[Graph Build] N={N}, K={K_neighbors}, mc_cand={mc_candidates}, rounds={n_rounds}")
+        print(f"[Graph Build] sigma_perturb={self.sigma_perturb:.6f} | K-NN: {t_knn:.2f}s, Sparse: {t_graph:.2f}s")
 
         self.proj_mean = torch.tensor(self.scaler_obj.mean_, dtype=torch.float32, device=self.device)
         self.proj_std = torch.tensor(np.sqrt(self.scaler_obj.var_), dtype=torch.float32, device=self.device)
