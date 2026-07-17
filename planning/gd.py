@@ -457,7 +457,7 @@ class GDPlanner(BasePlanner):
             v_terminal = self.heat_solver.evaluate_rollout(terminal_latent)
             loss = loss + tau * v_terminal.mean()
 
-            print(f"Step {i + 1} | MSE Loss: {loss.item():.4f} | V_terminal: {v_terminal.mean().item():.4f}")
+            print(f"Step {i + 1} | MSE Loss: {loss.mean().item():.4f} | V_terminal: {v_terminal.mean().item():.4f}")
 
             # Backpropagate
             total_loss = loss.mean() * self.num_samples
