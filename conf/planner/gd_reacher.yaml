@@ -1,6 +1,6 @@
 _target_: planning.gd.GDPlanner
 horizon: 5
-sample_type: 'randn'
+sample_type: 'zero'
 
 lr: 0.1
 opt_steps: 1000
@@ -8,7 +8,7 @@ eval_every: 10
 var_actions: 0.0
 var_states: 0.0
 num_samples: 1
-action_clamp: 2
+action_clamp: 3
 
 replay_buffer_path: /scratch/gilbreth/hviswan/grasp/latent_buffers/lewm_reacher_buffer.pt
 latent_key: visual
