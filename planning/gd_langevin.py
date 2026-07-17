@@ -1,7 +1,7 @@
 """
 GD Planner with Langevin noise shaping over the action space.
 
-Uses underdamped Langevin dynamics guided by the HJB cost-to-go field
+Uses underdamped Langevin dynamics guided by the heat-equation value field
 to shape the action noise before the main gradient descent update.
 The Langevin phase runs a short inner loop that follows the value
 function gradient in action space, then the refined noise is
@@ -15,8 +15,7 @@ import time
 import numpy as np
 from einops import rearrange
 from .base_planner import BasePlanner
-from .gd import LatentDynamicalHJB, _load_replay_buffer
-from utils import move_to_device
+from .gd import MCMollifiedHeat, _load_replay_buffer
 
 
 class GDLangevinPlanner(BasePlanner):
@@ -41,12 +40,6 @@ class GDLangevinPlanner(BasePlanner):
         action_clamp=0.0,
         replay_buffer_path=None,
         latent_key="proprio",
-        # HJB solver parameters
-        hjb_nu=0.3,
-        hjb_sigma_dyn=0.08,
-        hjb_k_neighbors=20,
-        hjb_lambda_off=500.0,
-        hjb_tau_density=0.01,
         hjb_tau=0.1,
         # Langevin parameters
         num_langevin_steps=10,
@@ -83,7 +76,7 @@ class GDLangevinPlanner(BasePlanner):
         self.langevin_gamma = langevin_gamma
         self.langevin_trust_radius = langevin_trust_radius
 
-        # Load replay buffer and build HJB graph
+        # Load replay buffer and build graph
         if replay_buffer_path is None:
             raise ValueError(
                 "replay_buffer_path must be set in the planner config. "
@@ -97,19 +90,13 @@ class GDLangevinPlanner(BasePlanner):
             print(f"  PCA projection enabled: {pca_info['mean'].shape[0]} -> {pca_info['components'].shape[0]} dims")
         print(f"  Loaded {z_buffer_np.shape[0]} transitions, latent_dim={z_buffer_np.shape[1]}")
 
-        self.latent_hjb_solver = LatentDynamicalHJB(
-            nu=hjb_nu,
-            sigma_dyn=hjb_sigma_dyn,
-            k_neighbors=hjb_k_neighbors,
-            lambda_off=hjb_lambda_off,
-            tau_density=hjb_tau_density,
-        )
+        self.heat_solver = MCMollifiedHeat()
         print("Compiling Latent Environment Graph...")
-        self.latent_hjb_solver.compile_environment(
+        self.heat_solver.compile_environment(
             z_buffer=z_buffer_np,
             z_predicted_next=z_next_gt_np,
         )
-        print("Latent Dynamical Graph built. Ready for planning.")
+        print("Heat graph built. Ready for planning.")
 
     def _get_latent(self, z_obses):
         """Extract the latent trajectory using the configured key.
@@ -177,7 +164,7 @@ class GDLangevinPlanner(BasePlanner):
 
                 # Compute HJB value at terminal state
                 terminal_latent = self._get_latent(i_z_obses_lang)[:, -1, :]
-                v_val = self.latent_hjb_solver.evaluate_rollout(terminal_latent)
+                v_val = self.heat_solver.evaluate_rollout(terminal_latent)
 
                 # We want to minimize v_val, so gradient of -v_val gives descent direction
                 objective_hjb = -v_val.sum()
@@ -244,10 +231,10 @@ class GDLangevinPlanner(BasePlanner):
         total_measured_time = 0.0
         exit_step = self.opt_steps
 
-        # Solve HJB for the goal
+        # Solve heat equation for the goal
         goal_latent = self._get_latent(z_obs_g_detached)
         current_goal_np = goal_latent[0, 0].detach().cpu().numpy()
-        self.latent_hjb_solver.solve_for_goal(current_goal_np)
+        self.heat_solver.solve_for_goal(current_goal_np)
 
         current_success = 0.0
         mean_dist = np.inf
@@ -298,7 +285,7 @@ class GDLangevinPlanner(BasePlanner):
             # Objective loss + HJB terminal cost
             loss = self.objective_fn(i_z_obses, z_obs_g_detached, final_noisy_actions)
             terminal_latent = latent_rollout[:, -1, :]
-            v_val = self.latent_hjb_solver.evaluate_rollout(terminal_latent)
+            v_val = self.heat_solver.evaluate_rollout(terminal_latent)
             tau = self.hjb_tau
             v_val = (torch.logsumexp(v_val / tau, dim=0)) * tau
             loss = loss + tau * v_val.mean()

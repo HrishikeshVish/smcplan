@@ -10,17 +10,11 @@ var_states: 0.0
 num_samples: 1
 action_clamp: 0 # clamp value for actions; 0 means no clamping
 
-# Latent replay buffer for HJB cost-to-go
+# Latent replay buffer for heat-equation value function
 replay_buffer_path: /scratch/gilbreth/hviswan/dino_wm/pointmaze_offline_replay_buffer.pt
 latent_key: proprio  # 'proprio' (pointmaze) or 'visual' (pusht, lewm)
 
-# HJB solver parameters
-hjb_nu: 0.3
-hjb_sigma_dyn: 0.08
-hjb_k_neighbors: 20
-hjb_lambda_off: 500.0
-hjb_tau_density: 0.01
-hjb_tau: 0.1  # LogSumExp temperature for terminal cost
+hjb_tau: 0.1  # weight for V guidance at terminal state
 
 # Langevin noise shaping parameters
 num_langevin_steps: 10

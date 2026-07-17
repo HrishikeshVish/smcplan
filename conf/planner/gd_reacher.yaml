@@ -13,11 +13,6 @@ action_clamp: 0
 replay_buffer_path: /scratch/gilbreth/hviswan/grasp/latent_buffers/lewm_reacher_buffer.pt
 latent_key: visual
 
-hjb_nu: 0.3
-hjb_sigma_dyn: 0.08
-hjb_k_neighbors: 20
-hjb_lambda_off: 500.0
-hjb_tau_density: 0.01
 hjb_tau: 0.1
 
 name: gd_reacher

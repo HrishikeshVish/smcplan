@@ -6,96 +6,22 @@ import time
 import numpy as np
 from einops import rearrange
 from .base_planner import BasePlanner
-from utils import move_to_device
 
 from sklearn.preprocessing import StandardScaler
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
-from sklearn.neighbors import NearestNeighbors
-import math
 
 
-class N_Dimensional_KDE:
-    def __init__(self, dataset_states, num_samples=20000, bandwidth=0.2, margin=0.1, device="cuda"):
-        """
-        Differentiable Nearest-Neighbor Distance Field.
-        Automatically scales to any spatial dimension (2D, 10D, etc.).
-        """
-        self.device = device
-        self.bandwidth = bandwidth
-        self.margin = margin
+class MCMollifiedHeat:
+    """Heat-equation value function on a Monte Carlo mollified K-NN graph.
 
-        # Prepare Data (accepts all D dimensions natively)
-        points = torch.as_tensor(dataset_states, dtype=torch.float32, device=self.device)
+    Graph construction uses MC sampling to approximate K-NN in O(N * rounds * candidates)
+    instead of O(N^2), with Gaussian mollifier weights. The graph is symmetrized for
+    undirected reachability, giving an SPD Laplacian solvable by Conjugate Gradient.
+    A surrogate MLP provides smooth gradients for planning.
+    """
 
-        # Subsample if necessary for memory/speed
-        if points.shape[0] > num_samples:
-            idx = torch.randperm(points.shape[0], device=self.device)[:num_samples]
-            points = points[idx]
-
-        self.points = points
-        self.n_points = points.shape[0]
-
-        # Generalized N-Dimensional Bounding Box
-        self.dims_min = points.min(dim=0).values - self.margin
-        self.dims_max = points.max(dim=0).values + self.margin
-
-        self.max_depth = 1.5
-
-    def log_prob(self, x, chunk_size=4096):
-        """
-        Differentiable Nearest Neighbor search using the Envelope Method.
-        Memory-optimized to prevent CUDA OOM on massive query graphs.
-        """
-        original_device = x.device
-        x = x.to(self.device)
-        M = x.shape[0]
-
-        # Nearest Neighbor Index (No Gradients, Chunked for VRAM safety)
-        nn_idx_list = []
-        with torch.no_grad():
-            for start in range(0, M, chunk_size):
-                end = min(start + chunk_size, M)
-                x_chunk = x[start:end]
-                dists = torch.cdist(x_chunk, self.points)
-                chunk_nn_idx = torch.argmin(dists, dim=-1)
-                nn_idx_list.append(chunk_nn_idx)
-
-        nn_idx = torch.cat(nn_idx_list, dim=0)
-
-        # Re-attach to Autograd Graph
-        nearest_points = self.points[nn_idx]
-        min_dists = torch.norm(x - nearest_points, dim=-1)
-
-        # Apply the plateau and sign (Negative distance = Log Prob)
-        min_dists = torch.clamp(min_dists, max=self.max_depth)
-        pseudo_log_prob = -1.0 * min_dists
-
-        # Generalized Outer Boundary Cliff
-        out_of_bounds = (x < self.dims_min) | (x > self.dims_max)
-        out_of_bounds_mask = out_of_bounds.any(dim=-1)
-
-        pseudo_log_prob = torch.where(
-            out_of_bounds_mask,
-            torch.full_like(pseudo_log_prob, -self.max_depth),
-            pseudo_log_prob
-        )
-
-        return pseudo_log_prob.to(original_device)
-
-class LatentDynamicalHJB:
-
-    def __init__(self, nu=0.1, sigma_dyn=1.0, k_neighbors=15, lambda_off=500.0,
-                 tau_density=0.01, lambda_obs=100.0, sigma_obs=1.0, nystrom_thresh=0.5):
-        self.nu = nu
-        self.sigma_dyn = sigma_dyn
-        self.k_neighbors = k_neighbors
-        self.lambda_off = lambda_off
-        self.tau_density = tau_density
-        self.lambda_obs = lambda_obs
-        self.sigma_obs = sigma_obs
-        self.nystrom_thresh = nystrom_thresh
-
+    def __init__(self):
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
         self.scaler_obj = StandardScaler()
@@ -357,11 +283,6 @@ class GDPlanner(BasePlanner):
         action_clamp=0.0,
         replay_buffer_path=None,
         latent_key="proprio",
-        hjb_nu=0.3,
-        hjb_sigma_dyn=0.08,
-        hjb_k_neighbors=20,
-        hjb_lambda_off=500.0,
-        hjb_tau_density=0.01,
         hjb_tau=0.1,
         **kwargs,
     ):
@@ -387,7 +308,7 @@ class GDPlanner(BasePlanner):
         self.latent_key = latent_key
         self.hjb_tau = hjb_tau
 
-        # Load replay buffer and build HJB graph
+        # Load replay buffer and build graph
         if replay_buffer_path is None:
             raise ValueError(
                 "replay_buffer_path must be set in the planner config. "
@@ -401,19 +322,13 @@ class GDPlanner(BasePlanner):
             print(f"  PCA projection enabled: {pca_info['mean'].shape[0]} -> {pca_info['components'].shape[0]} dims")
         print(f"  Loaded {z_buffer_np.shape[0]} transitions, latent_dim={z_buffer_np.shape[1]}")
 
-        self.latent_hjb_solver = LatentDynamicalHJB(
-            nu=hjb_nu,
-            sigma_dyn=hjb_sigma_dyn,
-            k_neighbors=hjb_k_neighbors,
-            lambda_off=hjb_lambda_off,
-            tau_density=hjb_tau_density,
-        )
+        self.heat_solver = MCMollifiedHeat()
         print("Compiling Latent Environment Graph...")
-        self.latent_hjb_solver.compile_environment(
+        self.heat_solver.compile_environment(
             z_buffer=z_buffer_np,
             z_predicted_next=z_next_gt_np,
         )
-        print("Latent Dynamical Graph built. Ready for planning.")
+        print("Heat graph built. Ready for planning.")
 
     def _get_latent(self, z_obses):
         """Extract the latent trajectory from the world model output.
@@ -491,10 +406,10 @@ class GDPlanner(BasePlanner):
         total_measured_time = 0.0
         exit_step = self.opt_steps
 
-        # Solve HJB for the goal using the configured latent key
+        # Solve heat equation for the goal using the configured latent key
         goal_latent = self._get_latent(z_obs_g_detached)
         current_goal_np = goal_latent[0, 0].detach().cpu().numpy()
-        self.latent_hjb_solver.solve_for_goal(current_goal_np)
+        self.heat_solver.solve_for_goal(current_goal_np)
 
         current_success = 0.0
         mean_dist = np.inf
@@ -512,8 +427,6 @@ class GDPlanner(BasePlanner):
 
             eps = torch.randn(self.num_samples, actions.shape[0], actions.shape[1], actions.shape[2]).to(actions) * actions_noise
 
-            base_noisy_actions = (actions.unsqueeze(0) + eps).flatten(0, 1).detach()
-
             # Expand observations for the batch size (num_samples * B)
             obs_batch = {
                 key: arr.repeat_interleave(self.num_samples, dim=0) if arr.shape[0] == actions.shape[0] else arr
@@ -525,10 +438,8 @@ class GDPlanner(BasePlanner):
             # World model rollout
             if self.var_states > 0:
                 i_z_obses, i_zs = self.wm.rollout_noisy(obs_0=obs_batch, act=final_noisy_actions, var_states=self.var_states)
-                i_z_obses_base, i_zs_base = self.wm.rollout_noisy(obs_0=obs_batch, act=base_noisy_actions, var_states=self.var_states)
             else:
                 i_z_obses, i_zs = self.wm.rollout(obs_0=obs_batch, act=final_noisy_actions)
-                i_z_obses_base, i_zs_base = self.wm.rollout(obs_0=obs_batch, act=base_noisy_actions)
 
             # Extract latent trajectory using configured key
             latent_rollout = self._get_latent(i_z_obses)
@@ -540,7 +451,7 @@ class GDPlanner(BasePlanner):
             # V guidance: backprop directly through surrogate MLP at terminal state
             tau = self.hjb_tau
             terminal_latent = latent_rollout[:, -1, :]
-            v_terminal = self.latent_hjb_solver.evaluate_rollout(terminal_latent)
+            v_terminal = self.heat_solver.evaluate_rollout(terminal_latent)
             loss = loss + tau * v_terminal.mean()
 
             print(f"Step {i + 1} | MSE Loss: {loss.item():.4f} | V_terminal: {v_terminal.mean().item():.4f}")
