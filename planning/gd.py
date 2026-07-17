@@ -445,9 +445,11 @@ class GDPlanner(BasePlanner):
             # Objective loss
             loss = self.objective_fn(i_z_obses, z_obs_g_detached, final_noisy_actions)
 
-            # L2 action regularization (keeps actions near dataset mean, analogous to CEM's variance bound)
+            # L2 action regularization with annealing: starts strong to prevent
+            # adversarial exploitation, decays to let MSE gradients take over
             if self.action_reg > 0:
-                loss = loss + self.action_reg * (actions ** 2).mean()
+                reg_weight = self.action_reg * max(0.0, 1.0 - (i / float(self.opt_steps)))
+                loss = loss + reg_weight * (actions ** 2).mean()
 
             # V guidance: backprop directly through surrogate MLP at terminal state
             tau = self.hjb_tau

@@ -188,15 +188,22 @@ class DMControlEnvWrapper:
 
         if 'Cube' in self.env_name or 'OGB' in self.env_name:
             successes = state_dists <= 0.04
+            return {
+                'success': successes,
+                'state_dist': state_dists,
+            }
         else:
             n_qpos = goal_states.shape[-1] // 2
             qpos_diff = np.abs(goal_states[:, :n_qpos] - cur_states[:, :n_qpos])
+            qvel_diff = np.abs(goal_states[:, n_qpos:] - cur_states[:, n_qpos:])
             successes = np.all(qpos_diff < 0.05, axis=-1)
 
-        return {
-            'success': successes,
-            'state_dist': state_dists,
-        }
+            return {
+                'success': successes,
+                'state_dist': state_dists,
+                'qpos_diff': qpos_diff,
+                'qvel_diff': qvel_diff,
+            }
 
     def update_env(self, env_info):
         """No-op for DMControl."""
