@@ -281,6 +281,7 @@ class GDPlanner(BasePlanner):
         var_states=0.0,
         num_samples=8,
         action_clamp=0.0,
+        action_reg=0.0,
         replay_buffer_path=None,
         latent_key="proprio",
         hjb_tau=0.1,
@@ -305,6 +306,7 @@ class GDPlanner(BasePlanner):
         self.var_states = var_states
         self.num_samples = num_samples
         self.action_clamp = action_clamp
+        self.action_reg = action_reg
         self.latent_key = latent_key
         self.hjb_tau = hjb_tau
 
@@ -367,11 +369,6 @@ class GDPlanner(BasePlanner):
                 new_actions = torch.randn(n_evals, remaining_t, self.action_dim)
             elif self.sample_type == "zero":
                 new_actions = torch.zeros(n_evals, remaining_t, self.action_dim)
-                new_actions = rearrange(
-                    new_actions, "... (f d) -> ... f d", f=self.evaluator.frameskip
-                )
-                new_actions = self.preprocessor.normalize_actions(new_actions)
-                new_actions = rearrange(new_actions, "... f d -> ... (f d)")
             actions = torch.cat([actions, new_actions.to(device)], dim=1)
         return actions
 
@@ -447,6 +444,10 @@ class GDPlanner(BasePlanner):
 
             # Objective loss
             loss = self.objective_fn(i_z_obses, z_obs_g_detached, final_noisy_actions)
+
+            # L2 action regularization (keeps actions near dataset mean, analogous to CEM's variance bound)
+            if self.action_reg > 0:
+                loss = loss + self.action_reg * (actions ** 2).mean()
 
             # V guidance: backprop directly through surrogate MLP at terminal state
             tau = self.hjb_tau

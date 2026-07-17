@@ -8,7 +8,8 @@ eval_every: 10
 var_actions: 0.0
 var_states: 0.0
 num_samples: 1
-action_clamp: 3
+action_clamp: 0
+action_reg: 0.1
 
 replay_buffer_path: /scratch/gilbreth/hviswan/grasp/latent_buffers/lewm_reacher_buffer.pt
 latent_key: visual
