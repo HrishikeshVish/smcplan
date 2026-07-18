@@ -10,6 +10,7 @@ from .base_planner import BasePlanner
 from sklearn.preprocessing import StandardScaler
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
+from scipy.sparse.csgraph import dijkstra
 
 
 class MCMollifiedHeat:
@@ -35,7 +36,8 @@ class MCMollifiedHeat:
         self.v_surrogate = None
 
     def compile_environment(self, z_buffer, z_predicted_next=None, n_nodes=None,
-                             K_neighbors=32, mc_candidates=4096, chunk_size=8192):
+                             K_neighbors=32, mc_candidates=4096, chunk_size=8192,
+                             use_isomap=False, isomap_landmarks=500):
         """
         Builds an undirected reachability graph using Monte Carlo mollified K-NN.
 
@@ -50,6 +52,11 @@ class MCMollifiedHeat:
 
         Monte Carlo K-NN replaces the O(N^2) cdist, allowing the full
         dataset (~1M transitions) instead of 55K subsampling.
+
+        If use_isomap=True, after building the spatial K-NN graph, geodesic
+        distances (shortest paths through the K-NN graph) are computed via
+        landmark Dijkstra. K-NN is then rebuilt in geodesic space, producing
+        a graph that respects manifold geometry and avoids cross-fold shortcuts.
         """
         import time as _time
 
@@ -115,27 +122,101 @@ class MCMollifiedHeat:
 
         t_knn = _time.perf_counter() - t0
 
-        # Build symmetric undirected Laplacian on CPU
-        t1 = _time.perf_counter()
-        W_local_np = W_local.cpu().numpy()
-        row_idx = np.repeat(np.arange(N), K_neighbors)
-        col_idx = all_k_indices.cpu().numpy().flatten()
-        data = W_local_np.flatten()
+        if use_isomap:
+            # ISOMAP: rebuild K-NN using geodesic distances (shortest paths
+            # through the spatial K-NN graph). This unfolds the manifold so
+            # that points on different folds are correctly separated.
+            t_iso0 = _time.perf_counter()
 
-        W_0 = sp.csr_matrix((data, (row_idx, col_idx)), shape=(N, N))
-        W_0.setdiag(0)
+            # Build distance-weighted K-NN graph for Dijkstra
+            knn_dists_np = all_k_dists.cpu().numpy()
+            knn_indices_np = all_k_indices.cpu().numpy()
+            row_idx = np.repeat(np.arange(N), K_neighbors)
+            col_idx = knn_indices_np.flatten()
+            W_dist = sp.csr_matrix((knn_dists_np.flatten(), (row_idx, col_idx)), shape=(N, N))
+            W_dist.setdiag(0)
+            W_dist_sym = (W_dist + W_dist.T) * 0.5
+            W_dist_sym.eliminate_zeros()
 
-        # Symmetrize: reachability is bidirectional
-        W_sym = (W_0 + W_0.T) * 0.5
+            # Landmark Dijkstra for geodesic distances
+            rng_lm = np.random.RandomState(42)
+            landmarks = rng_lm.choice(N, min(isomap_landmarks, N), replace=False)
+            geo_dists = dijkstra(W_dist_sym, directed=False, indices=landmarks)  # (L, N)
+            t_dijk = _time.perf_counter() - t_iso0
 
-        # Unnormalized graph Laplacian: L = D - W (symmetric positive semi-definite)
-        d = np.array(W_sym.sum(axis=1)).flatten()
-        self.L_sym = sp.diags(d) - W_sym
+            # Rebuild K-NN in geodesic space using GPU
+            t_gknn0 = _time.perf_counter()
+            geo_t = torch.tensor(geo_dists, dtype=torch.float32, device=self.device)  # (L, N)
+            L_lm = len(landmarks)
+            geo_knn_dists = np.full((N, K_neighbors), np.inf)
+            geo_knn_indices = np.zeros((N, K_neighbors), dtype=np.int64)
+            geo_chunk = 500
 
-        t_graph = _time.perf_counter() - t1
+            with torch.no_grad():
+                for start in range(0, N, geo_chunk):
+                    end = min(start + geo_chunk, N)
+                    chunk_n = end - start
+                    d_chunk = geo_t[:, start:end]  # (L, chunk)
 
-        print(f"[Graph Build] N={N}, K={K_neighbors}, mc_cand={mc_candidates}, rounds={n_rounds}")
-        print(f"[Graph Build] sigma_perturb={self.sigma_perturb:.6f} | K-NN: {t_knn:.2f}s, Sparse: {t_graph:.2f}s")
+                    d_approx = torch.full((chunk_n, N), float('inf'), device=self.device)
+                    lm_batch = 100
+                    for lb in range(0, L_lm, lm_batch):
+                        le = min(lb + lm_batch, L_lm)
+                        d_batch = d_chunk[lb:le, :, None] + geo_t[lb:le, None, :]
+                        d_approx = torch.minimum(d_approx, d_batch.min(dim=0).values)
+
+                    for ci in range(chunk_n):
+                        d_approx[ci, start + ci] = float('inf')
+
+                    topk_dists, topk_indices = torch.topk(-d_approx, k=K_neighbors, dim=1)
+                    geo_knn_dists[start:end] = (-topk_dists).cpu().numpy()
+                    geo_knn_indices[start:end] = topk_indices.cpu().numpy()
+
+            t_gknn = _time.perf_counter() - t_gknn0
+
+            # Replace K-NN with geodesic K-NN
+            geo_sigma = np.median(geo_knn_dists[:, 1]) * 2.0
+            geo_sigma = max(geo_sigma, 1e-6)
+            self.sigma_perturb = geo_sigma
+            W_local = np.exp(-(geo_knn_dists ** 2) / (2 * geo_sigma ** 2))
+
+            row_idx = np.repeat(np.arange(N), K_neighbors)
+            col_idx = geo_knn_indices.flatten()
+            data = W_local.flatten()
+            W_0 = sp.csr_matrix((data, (row_idx, col_idx)), shape=(N, N))
+            W_0.setdiag(0)
+            W_sym = (W_0 + W_0.T) * 0.5
+            d = np.array(W_sym.sum(axis=1)).flatten()
+            self.L_sym = sp.diags(d) - W_sym
+
+            t_iso_total = _time.perf_counter() - t_iso0
+            print(f"[ISOMAP Graph] N={N}, K={K_neighbors}, landmarks={len(landmarks)}")
+            print(f"[ISOMAP Graph] sigma_perturb={self.sigma_perturb:.6f}")
+            print(f"[ISOMAP Graph] Dijkstra: {t_dijk:.1f}s, Geodesic K-NN: {t_gknn:.1f}s, "
+                  f"Total: {t_iso_total:.1f}s")
+
+        else:
+            # Standard Euclidean K-NN graph
+            t1 = _time.perf_counter()
+            W_local_np = W_local.cpu().numpy()
+            row_idx = np.repeat(np.arange(N), K_neighbors)
+            col_idx = all_k_indices.cpu().numpy().flatten()
+            data = W_local_np.flatten()
+
+            W_0 = sp.csr_matrix((data, (row_idx, col_idx)), shape=(N, N))
+            W_0.setdiag(0)
+
+            # Symmetrize: reachability is bidirectional
+            W_sym = (W_0 + W_0.T) * 0.5
+
+            # Unnormalized graph Laplacian: L = D - W (symmetric positive semi-definite)
+            d = np.array(W_sym.sum(axis=1)).flatten()
+            self.L_sym = sp.diags(d) - W_sym
+
+            t_graph = _time.perf_counter() - t1
+
+            print(f"[Graph Build] N={N}, K={K_neighbors}, mc_cand={mc_candidates}, rounds={n_rounds}")
+            print(f"[Graph Build] sigma_perturb={self.sigma_perturb:.6f} | K-NN: {t_knn:.2f}s, Sparse: {t_graph:.2f}s")
 
         self.proj_mean = torch.tensor(self.scaler_obj.mean_, dtype=torch.float32, device=self.device)
         self.proj_std = torch.tensor(np.sqrt(self.scaler_obj.var_), dtype=torch.float32, device=self.device)
@@ -285,6 +366,9 @@ class GDPlanner(BasePlanner):
         replay_buffer_path=None,
         latent_key="proprio",
         hjb_tau=0.1,
+        use_isomap=False,
+        isomap_landmarks=500,
+        graph_n_nodes=55000,
         **kwargs,
     ):
         super().__init__(
@@ -309,6 +393,9 @@ class GDPlanner(BasePlanner):
         self.action_reg = action_reg
         self.latent_key = latent_key
         self.hjb_tau = hjb_tau
+        self.use_isomap = use_isomap
+        self.isomap_landmarks = isomap_landmarks
+        self.graph_n_nodes = graph_n_nodes
 
         # Load replay buffer and build graph
         if replay_buffer_path is None:
@@ -329,6 +416,9 @@ class GDPlanner(BasePlanner):
         self.heat_solver.compile_environment(
             z_buffer=z_buffer_np,
             z_predicted_next=z_next_gt_np,
+            n_nodes=self.graph_n_nodes,
+            use_isomap=self.use_isomap,
+            isomap_landmarks=self.isomap_landmarks,
         )
         print("Heat graph built. Ready for planning.")
 

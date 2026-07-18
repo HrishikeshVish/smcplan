@@ -41,6 +41,9 @@ class GDLangevinPlanner(BasePlanner):
         replay_buffer_path=None,
         latent_key="proprio",
         hjb_tau=0.1,
+        use_isomap=False,
+        isomap_landmarks=500,
+        graph_n_nodes=55000,
         # Langevin parameters
         num_langevin_steps=10,
         langevin_alpha_base=0.001,
@@ -69,6 +72,9 @@ class GDLangevinPlanner(BasePlanner):
         self.action_clamp = action_clamp
         self.latent_key = latent_key
         self.hjb_tau = hjb_tau
+        self.use_isomap = use_isomap
+        self.isomap_landmarks = isomap_landmarks
+        self.graph_n_nodes = graph_n_nodes
 
         # Langevin parameters
         self.num_langevin_steps = num_langevin_steps
@@ -95,6 +101,9 @@ class GDLangevinPlanner(BasePlanner):
         self.heat_solver.compile_environment(
             z_buffer=z_buffer_np,
             z_predicted_next=z_next_gt_np,
+            n_nodes=self.graph_n_nodes,
+            use_isomap=self.use_isomap,
+            isomap_landmarks=self.isomap_landmarks,
         )
         print("Heat graph built. Ready for planning.")
 
