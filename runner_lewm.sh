@@ -13,7 +13,7 @@ echo "---------------------------------------"
 for seed in $(seq 1 $NUM_SEEDS); do
     echo "Running Seed: $seed..."
 
-    python plan.py model_name=lewm_reacher n_evals=1 planner=gd_reacher goal_H=5 goal_source='dset' seed=$seed save_images=False planner.opt_steps=150
+    python plan.py model_name=lewm_reacher n_evals=1 planner=gd_reacher_isomap goal_H=5 goal_source='dset' seed=$seed save_images=False planner.opt_steps=150
 
     if [ -f "$LOG_FILE" ]; then
         LATEST_SCORE=$(tail -n 1 "$LOG_FILE")
