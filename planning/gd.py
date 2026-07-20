@@ -559,6 +559,10 @@ class GDPlanner(BasePlanner):
             end = time.perf_counter()
             total_measured_time += end - start
 
+            if i % self.eval_every == 0:
+                v_val = v_terminal.mean().item() if tau > 0 else 0.0
+                print(f"[Plan] step={i:4d} | loss={total_loss.item():.4f} | MSE={loss.mean().item():.4f} | V={v_val:.4f} | act_norm={actions.detach().norm(dim=-1).mean().item():.4f} | noise={current_noise:.4f}")
+
             if self.evaluator is not None and i % self.eval_every == 0:
                 logs, successes, _, _ = self.evaluator.eval_actions(
                     actions.detach(), filename=f"{self.logging_prefix}_output_{i+1}"
