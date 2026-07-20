@@ -292,10 +292,17 @@ class MCMollifiedHeat:
 
         t_solve = _time.perf_counter() - t0
 
-        # V = -log(u), shifted and scaled
-        V_raw = V_raw - V_raw.min()
-        scale_factor = phys_v_mean / (V_raw.mean() + 1e-8)
-        V_graph_np = V_raw * scale_factor
+        # For RW diffusion, -log(v) is very spiky (most mass near goal).
+        # Rank-normalize to get a smooth, uniform distribution while preserving
+        # the rank order (Spearman is invariant to monotone transforms).
+        if self.solver_mode == 'rw_diffusion':
+            from scipy.stats import rankdata
+            V_graph_np = rankdata(V_raw).astype(np.float64)
+            V_graph_np = (V_graph_np / V_graph_np.max()) * phys_v_mean * 2
+        else:
+            V_raw = V_raw - V_raw.min()
+            V_graph_np = V_raw * (phys_v_mean / (V_raw.mean() + 1e-8))
+
         self.V_graph = torch.tensor(V_graph_np, dtype=torch.float32, device=self.device)
 
         # Diagnostics
