@@ -15,8 +15,10 @@ replay_buffer_path: /scratch/gilbreth/hviswan/grasp/latent_buffers/lewm_reacher_
 latent_key: visual
 
 hjb_tau: 0.1
-use_isomap: true
-isomap_landmarks: 500
+solver_mode: rw_diffusion
+rw_steps: 10
+graph_k_neighbors: 64
+use_full_dim: true
 graph_n_nodes: 55000
 
 name: gd_reacher_isomap

@@ -14,12 +14,17 @@ from scipy.sparse.csgraph import dijkstra
 
 
 class MCMollifiedHeat:
-    """Heat-equation value function on a Monte Carlo mollified K-NN graph.
+    """Value function on a Monte Carlo mollified K-NN graph.
+
+    Supports two solver modes:
+      - 'heat': Implicit Euler heat equation on unnormalized Laplacian (I + t*L)u = delta.
+      - 'rw_diffusion': Explicit random walk diffusion on normalized transition matrix.
+        Iterates v_{t+1} = P^T v_t for rw_steps steps, equivalent to heat diffusion
+        on the random walk Laplacian L_rw = I - D^{-1}W.
 
     Graph construction uses MC sampling to approximate K-NN in O(N * rounds * candidates)
     instead of O(N^2), with Gaussian mollifier weights. The graph is symmetrized for
-    undirected reachability, giving an SPD Laplacian solvable by Conjugate Gradient.
-    A surrogate MLP provides smooth gradients for planning.
+    undirected reachability. A surrogate MLP provides smooth gradients for planning.
     """
 
     def __init__(self):
@@ -34,10 +39,14 @@ class MCMollifiedHeat:
         self.V_graph = None
         self.z_buffer_np = None
         self.v_surrogate = None
+        self.solver_mode = 'heat'
+        self.rw_steps = 10
+        self.P_trans = None  # transition matrix for rw_diffusion
 
     def compile_environment(self, z_buffer, z_predicted_next=None, n_nodes=None,
                              K_neighbors=32, mc_candidates=4096, chunk_size=8192,
-                             use_isomap=False, isomap_landmarks=500):
+                             use_isomap=False, isomap_landmarks=500,
+                             solver_mode='heat', rw_steps=10):
         """
         Builds an undirected reachability graph using Monte Carlo mollified K-NN.
 
@@ -60,6 +69,9 @@ class MCMollifiedHeat:
         """
         import time as _time
 
+        self.solver_mode = solver_mode
+        self.rw_steps = rw_steps
+
         z_combined = np.vstack([z_buffer, z_predicted_next]) if z_predicted_next is not None else z_buffer
         self.scaler_obj.fit(z_combined)
 
@@ -80,7 +92,12 @@ class MCMollifiedHeat:
 
         z_next_tensor = torch.tensor(z_next_scaled, dtype=torch.float32, device=self.device)
 
-        # MC mollified K-NN: for each z_next[i], estimate K nearest graph nodes
+        # For rw_diffusion, use spatial K-NN (z_curr -> z_curr) instead of
+        # dynamics K-NN (z_next -> z_curr). Spatial K-NN produces a cleaner
+        # graph for random walk diffusion.
+        knn_source = self.graph_nodes if solver_mode == 'rw_diffusion' else z_next_tensor
+
+        # MC mollified K-NN: estimate K nearest graph nodes per point
         # by sampling mc_candidates random candidates per round. Avoids the
         # O(N^2) full cdist that OOMs above ~55K nodes.
         # Cap rounds at 50: 50 * 4096 = 200K candidates sampled, sufficient
@@ -100,7 +117,7 @@ class MCMollifiedHeat:
 
                 for start in range(0, N, chunk_size):
                     end = min(start + chunk_size, N)
-                    dists = torch.cdist(z_next_tensor[start:end], cand_nodes)
+                    dists = torch.cdist(knn_source[start:end], cand_nodes)
                     ck = min(K_neighbors, dists.shape[1])
                     chunk_k_dists, chunk_k_local = torch.topk(-dists, k=ck, dim=1)
                     chunk_k_dists = -chunk_k_dists
@@ -218,15 +235,29 @@ class MCMollifiedHeat:
             print(f"[Graph Build] N={N}, K={K_neighbors}, mc_cand={mc_candidates}, rounds={n_rounds}")
             print(f"[Graph Build] sigma_perturb={self.sigma_perturb:.6f} | K-NN: {t_knn:.2f}s, Sparse: {t_graph:.2f}s")
 
+        # Build transition matrix P = D^{-1}W for random walk diffusion.
+        # Recover W from L = D - W: diagonal of L is D, off-diag of L is -W.
+        if solver_mode == 'rw_diffusion':
+            W_recovered = -self.L_sym.copy()
+            W_recovered.setdiag(0)
+            d_arr = np.array(W_recovered.sum(axis=1)).flatten()
+            d_inv = np.where(d_arr > 0, 1.0 / d_arr, 0.0)
+            self.P_trans = (sp.diags(d_inv) @ W_recovered).T.tocsr()
+            print(f"[RW Diffusion] Built P^T, rw_steps={rw_steps}")
+
         self.proj_mean = torch.tensor(self.scaler_obj.mean_, dtype=torch.float32, device=self.device)
         self.proj_std = torch.tensor(np.sqrt(self.scaler_obj.var_), dtype=torch.float32, device=self.device)
 
 
     def solve_for_goal(self, z_goal, phys_v_mean=10.0):
         """
-        Heat equation on undirected graph via CG: (I + t*L)u = delta_goal, V = -log(u).
-        L is symmetric positive semi-definite, so (I + tL) is SPD and CG converges.
-        Then fits a surrogate MLP for smooth, dense gradients during planning.
+        Solve for goal-conditioned value function V on the graph.
+
+        Two modes:
+          - 'heat': Implicit Euler (I + t*L)u = delta_goal, V = -log(u).
+          - 'rw_diffusion': Random walk v_{t+1} = P^T v_t for rw_steps, V = -log(v).
+
+        Then fits a surrogate MLP for smooth gradients during planning.
         """
         import time as _time
 
@@ -235,23 +266,33 @@ class MCMollifiedHeat:
         self.goal_idx = np.argmin(goal_dists)
 
         N = self.L_sym.shape[0]
-        h2 = self.sigma_perturb ** 2
-        t = h2 * 500
-
-        # CG heat solve (SPD system, faster than GMRES)
         t0 = _time.perf_counter()
-        b = np.zeros(N)
-        b[self.goal_idx] = 1.0
-        A_heat = sp.eye(N) + t * self.L_sym
-        M_pre = sp.diags(1.0 / (A_heat.diagonal() + 1e-8))
-        u, info = spla.cg(A_heat, b, rtol=1e-8, maxiter=5000, M=M_pre)
-        if info != 0:
-            print(f"[Warning] CG exited with code {info}")
+
+        if self.solver_mode == 'rw_diffusion':
+            # Random walk diffusion: explicit Euler on L_rw = I - D^{-1}W
+            v = np.zeros(N)
+            v[self.goal_idx] = 1.0
+            for _ in range(self.rw_steps):
+                v = self.P_trans @ v
+            v = np.maximum(v, 1e-300)
+            V_raw = -np.log(v)
+        else:
+            # Heat equation: implicit Euler on unnormalized Laplacian
+            h2 = self.sigma_perturb ** 2
+            t = h2 * 500
+            b = np.zeros(N)
+            b[self.goal_idx] = 1.0
+            A_heat = sp.eye(N) + t * self.L_sym
+            M_pre = sp.diags(1.0 / (A_heat.diagonal() + 1e-8))
+            u, info = spla.cg(A_heat, b, rtol=1e-8, maxiter=5000, M=M_pre)
+            if info != 0:
+                print(f"[Warning] CG exited with code {info}")
+            u = np.maximum(u, 1e-300)
+            V_raw = -np.log(u)
+
         t_solve = _time.perf_counter() - t0
 
         # V = -log(u), shifted and scaled
-        u = np.maximum(u, 1e-300)
-        V_raw = -np.log(u)
         V_raw = V_raw - V_raw.min()
         scale_factor = phys_v_mean / (V_raw.mean() + 1e-8)
         V_graph_np = V_raw * scale_factor
@@ -261,7 +302,8 @@ class MCMollifiedHeat:
         from scipy.stats import spearmanr
         euclid_dists = np.linalg.norm(self.z_buffer_np - self.z_buffer_np[self.goal_idx], axis=1)
         corr, pval = spearmanr(V_graph_np, euclid_dists)
-        print(f"[Heat CG] Solve: {t_solve:.2f}s | V: [{V_graph_np.min():.2f}, {V_graph_np.max():.2f}] "
+        solver_tag = f"RW t={self.rw_steps}" if self.solver_mode == 'rw_diffusion' else "Heat CG"
+        print(f"[{solver_tag}] Solve: {t_solve:.2f}s | V: [{V_graph_np.min():.2f}, {V_graph_np.max():.2f}] "
               f"mean={V_graph_np.mean():.2f} std={V_graph_np.std():.2f} | "
               f"Spearman={corr:.4f}")
 
@@ -369,6 +411,10 @@ class GDPlanner(BasePlanner):
         use_isomap=False,
         isomap_landmarks=500,
         graph_n_nodes=55000,
+        solver_mode='heat',
+        rw_steps=10,
+        graph_k_neighbors=32,
+        use_full_dim=False,
         **kwargs,
     ):
         super().__init__(
@@ -396,6 +442,10 @@ class GDPlanner(BasePlanner):
         self.use_isomap = use_isomap
         self.isomap_landmarks = isomap_landmarks
         self.graph_n_nodes = graph_n_nodes
+        self.solver_mode = solver_mode
+        self.rw_steps = rw_steps
+        self.graph_k_neighbors = graph_k_neighbors
+        self.use_full_dim = use_full_dim
 
         # Load replay buffer and build graph
         if replay_buffer_path is None:
@@ -411,16 +461,31 @@ class GDPlanner(BasePlanner):
             print(f"  PCA projection enabled: {pca_info['mean'].shape[0]} -> {pca_info['components'].shape[0]} dims")
         print(f"  Loaded {z_buffer_np.shape[0]} transitions, latent_dim={z_buffer_np.shape[1]}")
 
+        # For rw_diffusion with PCA buffers, reconstruct full-dim latents for
+        # graph construction (better spatial structure in 192D vs 10D PCA).
+        # The surrogate MLP still operates in PCA space for planning compatibility.
+        graph_z_buffer = z_buffer_np
+        graph_z_next = z_next_gt_np
+        if self.use_full_dim and pca_info is not None:
+            comp_np = pca_info['components'].cpu().numpy()  # (pca_dim, D)
+            mean_np = pca_info['mean'].cpu().numpy()         # (D,)
+            graph_z_buffer = z_buffer_np @ comp_np + mean_np
+            graph_z_next = z_next_gt_np @ comp_np + mean_np
+            print(f"  Using full-dim latents for graph: {graph_z_buffer.shape[1]}D")
+
         self.heat_solver = MCMollifiedHeat()
-        print("Compiling Latent Environment Graph...")
+        print(f"Compiling Latent Environment Graph (solver={self.solver_mode})...")
         self.heat_solver.compile_environment(
-            z_buffer=z_buffer_np,
-            z_predicted_next=z_next_gt_np,
+            z_buffer=graph_z_buffer,
+            z_predicted_next=graph_z_next,
             n_nodes=self.graph_n_nodes,
+            K_neighbors=self.graph_k_neighbors,
             use_isomap=self.use_isomap,
             isomap_landmarks=self.isomap_landmarks,
+            solver_mode=self.solver_mode,
+            rw_steps=self.rw_steps,
         )
-        print("Heat graph built. Ready for planning.")
+        print("Graph built. Ready for planning.")
 
     def _get_latent(self, z_obses):
         """Extract the latent trajectory from the world model output.
@@ -432,8 +497,10 @@ class GDPlanner(BasePlanner):
         # Pool patch dimension if present (e.g. visual: B, T, num_patches, D)
         if latent.dim() == 4:
             latent = latent.mean(dim=2)  # (B, T, D)
-        # Apply PCA projection if buffer was built with --pca-dim
-        if self.pca_info is not None:
+        # Apply PCA projection if buffer was built with --pca-dim.
+        # Skip PCA when use_full_dim=True: the graph and surrogate MLP operate
+        # in the original latent space, which matches the world model output.
+        if self.pca_info is not None and not self.use_full_dim:
             shape = latent.shape  # (B, T, D_orig)
             flat = latent.reshape(-1, shape[-1])  # (B*T, D_orig)
             flat = (flat - self.pca_info['mean']) @ self.pca_info['components'].T  # (B*T, pca_dim)
