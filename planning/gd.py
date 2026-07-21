@@ -46,7 +46,8 @@ class MCMollifiedHeat:
     def compile_environment(self, z_buffer, z_predicted_next=None, n_nodes=None,
                              K_neighbors=32, mc_candidates=4096, chunk_size=8192,
                              use_isomap=False, isomap_landmarks=500,
-                             solver_mode='heat', rw_steps=10):
+                             solver_mode='heat', rw_steps=10,
+                             use_spatial_knn=False):
         """
         Builds an undirected reachability graph using Monte Carlo mollified K-NN.
 
@@ -287,20 +288,17 @@ class MCMollifiedHeat:
             u, info = spla.cg(A_heat, b, rtol=1e-8, maxiter=5000, M=M_pre)
             if info != 0:
                 print(f"[Warning] CG exited with code {info}")
-            u = np.maximum(u, 1e-300)
-            V_raw = -np.log(u)
+            u = np.maximum(u, 0.0)
+            V_raw = u.max() - u
 
         t_solve = _time.perf_counter() - t0
 
-        # For RW diffusion, -log(v) is very spiky (most mass near goal).
-        # Rank-normalize to get a smooth, uniform distribution while preserving
-        # the rank order (Spearman is invariant to monotone transforms).
+        # For RW diffusion, rank-normalize to get a smooth distribution.
         if self.solver_mode == 'rw_diffusion':
             from scipy.stats import rankdata
             V_graph_np = rankdata(V_raw).astype(np.float64)
             V_graph_np = (V_graph_np / V_graph_np.max()) * phys_v_mean * 2
         else:
-            V_raw = V_raw - V_raw.min()
             V_graph_np = V_raw * (phys_v_mean / (V_raw.mean() + 1e-8))
 
         self.V_graph = torch.tensor(V_graph_np, dtype=torch.float32, device=self.device)
@@ -608,6 +606,7 @@ class GDPlanner(BasePlanner):
 
             # Objective loss
             loss = self.objective_fn(i_z_obses, z_obs_g_detached, final_noisy_actions)
+            mse_val = loss.mean().item()
 
             # L2 action regularization with annealing: starts strong to prevent
             # adversarial exploitation, decays to let MSE gradients take over
@@ -619,6 +618,7 @@ class GDPlanner(BasePlanner):
             tau = self.hjb_tau
             terminal_latent = latent_rollout[:, -1, :]
             v_terminal = self.heat_solver.evaluate_rollout(terminal_latent)
+            v_val = v_terminal.mean().item()
             loss = loss + tau * v_terminal.mean()
 
             # Backpropagate
@@ -634,8 +634,7 @@ class GDPlanner(BasePlanner):
             total_measured_time += end - start
 
             if i % self.eval_every == 0:
-                v_val = v_terminal.mean().item() if tau > 0 else 0.0
-                print(f"[Plan] step={i:4d} | loss={total_loss.item():.4f} | MSE={loss.mean().item():.4f} | V={v_val:.4f} | act_norm={actions.detach().norm(dim=-1).mean().item():.4f} | noise={current_noise:.4f}")
+                print(f"[Plan] step={i:4d} | total={total_loss.item():.4f} | MSE={mse_val:.4f} | V={v_val:.4f} | act_norm={actions.detach().norm(dim=-1).mean().item():.4f} | noise={current_noise:.4f}")
 
             if self.evaluator is not None and i % self.eval_every == 0:
                 logs, successes, _, _ = self.evaluator.eval_actions(
