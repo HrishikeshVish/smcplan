@@ -14,11 +14,15 @@ action_reg: 0.0
 replay_buffer_path: /scratch/gilbreth/hviswan/grasp/latent_buffers/lewm_reacher_buffer.pt
 latent_key: visual
 
-hjb_tau: 0.1
+hjb_tau: 0.002
 solver_mode: rw_diffusion
-rw_steps: 10
+rw_steps: 20
 graph_k_neighbors: 64
 use_full_dim: true
 graph_n_nodes: 55000
+# NOTE: despite this file's name, isomap is OFF. The shipped runs behind
+# seed_success_log.txt used random-walk diffusion on a Euclidean kNN graph in
+# full 192-D. Set to true to actually get geodesic (Dijkstra) kNN.
+use_isomap: false
 
 name: gd_reacher_isomap

@@ -127,7 +127,7 @@ class PlanEvaluator:  # evaluator for planning
         )
 
         # plot trajs
-        if self.save_images and self.wm.decoder is not None:
+        if self.save_images and getattr(self.wm, "decoder", None) is not None:
             i_visuals = self.wm.decode_obs(i_z_obses)[0]["visual"]
             i_visuals = self._mask_traj(
                 i_visuals, action_len + 1

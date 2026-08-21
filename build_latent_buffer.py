@@ -69,7 +69,20 @@ def encode_lewm_dataset(wm, dset, device, max_episodes=8000):
         for i in tqdm(range(min(len(dset), max_episodes)), desc="Encoding dataset"):
             obs, actions, state, info = dset[i]
 
-            pixels = obs["visual"].unsqueeze(0).float().to(device)  # (1, T, C, H, W)
+            # DMControlDataset.__getitem__ returns raw pixels/255 and never
+            # applies dset.transform, but the planner encodes through
+            # Preprocessor.transform_obs_visual, which DOES apply it (Resize +
+            # ImageNet Normalize). Encoding the buffer without it put the graph
+            # ~15.5 away in latent space from every point the planner ever
+            # queries -- 646x the typical nearest-neighbour spacing -- so the
+            # heat solve, surrogate and direction field were all extrapolating.
+            # Match the planner exactly.
+            visual = obs["visual"].float()
+            if getattr(dset, "transform", None) is not None:
+                from torchvision import tv_tensors
+                visual = dset.transform(tv_tensors.Video(visual))
+
+            pixels = visual.unsqueeze(0).to(device)  # (1, T, C, H, W)
             trans_obs = {
                 "visual": pixels,
                 "proprio": torch.zeros(1, pixels.shape[1], 0, device=device),
@@ -145,7 +158,7 @@ def main():
         z_curr, z_next = encode_lewm_dataset(wm, dset, device, max_episodes)
     else:
         from hydra.utils import to_absolute_path
-        from utils import load_model
+        from plan import load_model
 
         checkpoint_dir = args.checkpoint_dir
         if checkpoint_dir is None:
@@ -164,8 +177,8 @@ def main():
         dataset_path = str(dino_run_dir.parent / model_cfg.env.dataset.data_path) if not os.path.isabs(model_cfg.env.dataset.data_path) else model_cfg.env.dataset.data_path
 
         if env_name == "pointmaze":
-            from datasets.point_maze_dset import PointMazeDataset
-            from datasets.img_transforms import default_transform
+            from dsets.point_maze_dset import PointMazeDataset
+            from dsets.img_transforms import default_transform
             dset = PointMazeDataset(
                 data_path=dataset_path,
                 n_rollout=None,
@@ -173,8 +186,8 @@ def main():
                 normalize_action=True,
             )
         elif env_name == "pusht":
-            from datasets.pusht_dset import PushTDataset
-            from datasets.img_transforms import default_transform
+            from dsets.pusht_dset import PushTDataset
+            from dsets.img_transforms import default_transform
             dset = PushTDataset(
                 data_path=dataset_path + "/train",
                 n_rollout=None,

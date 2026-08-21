@@ -39,6 +39,12 @@ class MCMollifiedHeat:
         self.V_graph = None
         self.z_buffer_np = None
         self.v_surrogate = None
+        self.x_surrogate = None   # unit direction field (heat method step II)
+        # K-NN patches retained for the heat-method gradient (steps II/III).
+        # compile_environment discards these once L_sym is assembled, but the
+        # least-squares gradient needs the raw neighbour lists and weights.
+        self.knn_indices = None
+        self.knn_weights = None
         self.solver_mode = 'heat'
         self.rw_steps = 10
         self.P_trans = None  # transition matrix for rw_diffusion
@@ -207,6 +213,9 @@ class MCMollifiedHeat:
             d = np.array(W_sym.sum(axis=1)).flatten()
             self.L_sym = sp.diags(d) - W_sym
 
+            self.knn_indices = geo_knn_indices
+            self.knn_weights = W_local
+
             t_iso_total = _time.perf_counter() - t_iso0
             print(f"[ISOMAP Graph] N={N}, K={K_neighbors}, landmarks={len(landmarks)}")
             print(f"[ISOMAP Graph] sigma_perturb={self.sigma_perturb:.6f}")
@@ -230,6 +239,9 @@ class MCMollifiedHeat:
             # Unnormalized graph Laplacian: L = D - W (symmetric positive semi-definite)
             d = np.array(W_sym.sum(axis=1)).flatten()
             self.L_sym = sp.diags(d) - W_sym
+
+            self.knn_indices = all_k_indices.cpu().numpy()
+            self.knn_weights = W_local_np
 
             t_graph = _time.perf_counter() - t1
 
@@ -280,7 +292,10 @@ class MCMollifiedHeat:
         else:
             # Heat equation: implicit Euler on unnormalized Laplacian
             h2 = self.sigma_perturb ** 2
-            t = h2 * 500
+            # Crane et al.: t = m * h^2 with m ~ 1. m=500 diffuses to near
+            # equilibrium -- measured u range collapses to 1.7x and V's total
+            # variation to 0.081 (vs 6.87 at m=1), leaving no slope to descend.
+            t = h2 * getattr(self, 'heat_m', 1.0)
             b = np.zeros(N)
             b[self.goal_idx] = 1.0
             A_heat = sp.eye(N) + t * self.L_sym
@@ -289,17 +304,59 @@ class MCMollifiedHeat:
             if info != 0:
                 print(f"[Warning] CG exited with code {info}")
             u = np.maximum(u, 0.0)
-            V_raw = u.max() - u
+            # -log u, matching the rw_diffusion branch. `u.max() - u` is linear
+            # in u and therefore nearly constant once u is smooth.
+            V_raw = -np.log(np.maximum(u, 1e-300))
 
         t_solve = _time.perf_counter() - t0
 
-        # For RW diffusion, rank-normalize to get a smooth distribution.
-        if self.solver_mode == 'rw_diffusion':
-            from scipy.stats import rankdata
-            V_graph_np = rankdata(V_raw).astype(np.float64)
-            V_graph_np = (V_graph_np / V_graph_np.max()) * phys_v_mean * 2
-        else:
-            V_graph_np = V_raw * (phys_v_mean / (V_raw.mean() + 1e-8))
+        # Reshape the potential. V's ORDERING tracks geodesic distance well
+        # (spearman 0.93-0.98) but its VALUES do not: fitting V ~ d^p gives
+        # p ~ 0.53, i.e. a concave field whose gradient is largest AT the goal
+        # and decays outward -- the opposite of what an objective needs, and
+        # singular rather than vanishing at the goal. The resolvent (I+tL)^-1
+        # decays like exp(-d/lambda), so -log u is at best linear in d; it can
+        # never be the d^2/4t bowl Varadhan gives for the true kernel exp(-tL).
+        #
+        # So rebuild the profile from the part that is reliable. Rank-transform
+        # V to a uniform distance surrogate r in [0, 1], then square it:
+        # |grad(r^2)| ~ r grows with distance and vanishes at the goal, which is
+        # the MSE profile expressed in geodesic distance.
+        # Rank maps to quantile, and on an n-dimensional manifold r ~ d^n, so
+        # the LINEAR rank transform already yields V ~ d^2.26 here -- measured
+        # p=2.263, matching this buffer's TwoNN intrinsic dimension of 2.26.
+        # That is the bowl we want; squaring overshoots to p=4.5. On a
+        # higher-dimensional manifold use exponent 2/n instead of 1.
+        from scipy.stats import rankdata
+        r = (rankdata(V_raw).astype(np.float64) - 1.0) / max(len(V_raw) - 1, 1)
+        V_graph_np = (r ** getattr(self, 'v_exponent', 1.0)) * phys_v_mean * 2
+
+        # Diagnostic controls: keep V's SCALE but destroy its meaning, to test
+        # whether the guidance contributes geodesic information or merely
+        # perturbs the optimisation landscape. If a scale-matched nonsense
+        # field rescues the same seeds, the term is not doing what it claims.
+        ctrl = getattr(self, 'v_control', None)
+        if ctrl and ctrl != 'none':
+            rng = np.random.RandomState(0)
+            lo, hi, mean = V_graph_np.min(), V_graph_np.max(), V_graph_np.mean()
+            if ctrl == 'shuffle':          # same values, no spatial structure
+                V_graph_np = rng.permutation(V_graph_np)
+            elif ctrl == 'constant':       # no gradient at all (should match tau=0)
+                V_graph_np = np.full_like(V_graph_np, mean)
+            elif ctrl == 'randsmooth':     # smooth, wrong: random linear field
+                w = rng.randn(self.z_buffer_np.shape[1])
+                p = self.z_buffer_np @ w
+                V_graph_np = (p - p.min()) / (np.ptp(p) + 1e-12) * (hi - lo) + lo
+            elif ctrl == 'wrong_goal':     # real geodesic structure, wrong target
+                gi2 = rng.randint(len(V_graph_np))
+                v2 = np.zeros(len(V_graph_np)); v2[gi2] = 1.0
+                for _ in range(self.rw_steps):
+                    v2 = self.P_trans @ v2 if self.P_trans is not None else v2
+                v2 = -np.log(np.maximum(v2, 1e-300))
+                V_graph_np = (v2 - v2.min()) / (np.ptp(v2) + 1e-12) * (hi - lo) + lo
+            print(f"[V-CONTROL] '{ctrl}' applied | range [{V_graph_np.min():.3f}, "
+                  f"{V_graph_np.max():.3f}] mean={V_graph_np.mean():.3f} "
+                  f"(original [{lo:.3f}, {hi:.3f}] mean={mean:.3f})")
 
         self.V_graph = torch.tensor(V_graph_np, dtype=torch.float32, device=self.device)
 
@@ -325,6 +382,13 @@ class MCMollifiedHeat:
                 nn.Softplus(),
             ).to(self.device)
 
+        # The fit below freezes these at the end so the planner can backprop
+        # through the surrogate without touching its weights. On a second call
+        # (new goal, or n_evals > 1) they are still frozen, which makes
+        # loss.backward() raise, so re-enable before refitting.
+        for p in self.v_surrogate.parameters():
+            p.requires_grad = True
+
         optimizer = torch.optim.Adam(self.v_surrogate.parameters(), lr=5e-3)
         self.v_surrogate.train()
         for step in range(250):
@@ -342,6 +406,304 @@ class MCMollifiedHeat:
         print(f"[Surrogate] Fit: {t_surr:.2f}s | final MSE={loss.item():.4f}")
 
         return self.V_graph
+
+    # ------------------------------------------------------------------
+    # Heat method (Crane, Weischedel & Wardetzky, CACM 2017), steps II/III.
+    #
+    # solve_for_goal above reads distance straight off the diffusion field
+    # via -log(u) (Varadhan's formula). That is exact as t -> 0 but poor on
+    # an approximate kernel, because it is sensitive to errors in the
+    # *magnitude* of u. The heat method keeps only the direction of grad(u),
+    # which is the part that survives approximation, and recovers phi by
+    # least-squares against that unit field.
+    #
+    # Step I is unchanged and mode-agnostic: any positive, monotonically
+    # decaying u works, so 'rw_diffusion' feeds these as happily as 'heat'.
+    # ------------------------------------------------------------------
+
+    def compute_unit_gradient(self, u, chunk_size=2048, rcond=1e-8):
+        """Step II: X = -grad(u)/|grad(u)| at every graph node.
+
+        There are no faces on a point cloud, so the per-face gradient of the
+        mesh formulation is replaced by a weighted least-squares fit over
+        each node's K-NN patch -- find g minimising
+
+            sum_j w_ij ( u_j - u_i - g . (z_j - z_i) )^2
+
+        The system is (K, D) with K < D, so the minimum-norm solution is
+        taken. It lands in the span of the neighbour offsets, i.e. the
+        estimated tangent space, which is why no explicit projection or
+        intrinsic-dimension estimate is needed.
+
+        u decays exponentially with distance, so each patch is rescaled by
+        its own maximum before differencing -- cf. computeUnitGradient in
+        Geodesics_in_heat, which divides each face by max(u0, u1, u2).
+        Without this the differences underflow far from the source. The
+        scale cancels under normalisation, so it costs nothing.
+
+        Args:
+            u: (N,) non-negative diffusion field from step I.
+        Returns:
+            X: (N, D) unit vectors in scaled coordinates, pointing away
+               from the source. Zero rows where the patch is degenerate.
+        """
+        if self.knn_indices is None:
+            raise RuntimeError("compile_environment must run before compute_unit_gradient")
+
+        dev = self.device
+        u_t = torch.as_tensor(np.asarray(u), dtype=torch.float32, device=dev)
+        idx = torch.as_tensor(self.knn_indices, dtype=torch.long, device=dev)
+        w = torch.as_tensor(self.knn_weights, dtype=torch.float32, device=dev)
+        Z = self.graph_nodes
+        N, K = idx.shape
+        X = torch.zeros_like(Z)
+
+        for start in range(0, N, chunk_size):
+            end = min(start + chunk_size, N)
+            nb = idx[start:end]                                  # (B, K)
+            u_i = u_t[start:end].unsqueeze(1)                    # (B, 1)
+            u_j = u_t[nb]                                        # (B, K)
+
+            # Local rescale: bring the patch back to O(1) before differencing.
+            scale = torch.maximum(u_j.max(dim=1, keepdim=True).values, u_i)
+            scale = torch.where(scale > 0, scale, torch.ones_like(scale))
+            du = (u_j - u_i) / scale                             # (B, K)
+
+            delta = Z[nb] - Z[start:end].unsqueeze(1)            # (B, K, D)
+            sw = torch.sqrt(torch.clamp(w[start:end], min=0.0))  # (B, K)
+
+            A = (sw.unsqueeze(-1) * delta).double()              # (B, K, D)
+            b = (sw * du).double()                               # (B, K)
+
+            # Minimum-norm solution g = A^+ b, via a truncated pseudo-inverse
+            # of the (K, K) Gram matrix -- never (D, D), so the ambient
+            # dimension costs nothing. A K-NN patch on a d-dimensional
+            # manifold spans only d << K directions, so the Gram matrix is
+            # badly rank-deficient by construction; a plain solve (or a small
+            # ridge) inverts noise in the null space. eigh in float64 with an
+            # explicit rank cut is what keeps this stable.
+            M = A @ A.transpose(1, 2)                            # (B, K, K)
+            evals, evecs = torch.linalg.eigh(M)                  # ascending
+            cutoff = rcond * evals[:, -1:].clamp(min=0)
+            inv = torch.where(evals > cutoff, 1.0 / evals.clamp(min=1e-300),
+                              torch.zeros_like(evals))
+            c = evecs @ (inv * torch.einsum('bkj,bk->bj', evecs, b)).unsqueeze(-1)
+            g = (A.transpose(1, 2) @ c).squeeze(-1).float()      # (B, D)
+
+            gn = g.norm(dim=-1, keepdim=True)
+            X[start:end] = torch.where(gn > 1e-12, -g / gn.clamp(min=1e-12),
+                                       torch.zeros_like(g))
+
+        n_dead = int((X.norm(dim=-1) == 0).sum().item())
+        print(f"[Heat II] Unit gradient: N={N} K={K} | degenerate patches={n_dead} "
+              f"({100.0 * n_dead / N:.2f}%)")
+        return X
+
+    def solve_phi(self, X, goal_idx=None):
+        """Step III: solve the Poisson problem L phi = div X.
+
+        phi is the least-squares potential whose gradient best matches the
+        unit field X, i.e. the minimiser of sum_ij w_ij (phi_j - phi_i -
+        X_ij . (z_j - z_i))^2. Setting the derivative to zero gives
+
+            (L phi)_i = - sum_j w_ij X_ij . (z_j - z_i)
+
+        with X_ij = (X_i + X_j)/2 the field on edge (i, j). The reference
+        implementation factors the same cotan matrix used in step I and
+        solves it against the integrated divergence; L_sym is reused here
+        for exactly that reason -- no second operator is built.
+
+        The edge sum expands into four sparse mat-vecs, so this never
+        materialises an (nnz, D) intermediate.
+
+        Args:
+            X: (N, D) unit vector field from compute_unit_gradient.
+            goal_idx: node to shift to zero. Defaults to self.goal_idx.
+        Returns:
+            phi: (N,) geodesic distance in scaled-coordinate units.
+        """
+        X_np = X.detach().cpu().numpy().astype(np.float64) if torch.is_tensor(X) else np.asarray(X)
+        Z = self.z_buffer_np.astype(np.float64)
+
+        # Recover W from L = D - W so the divergence uses precisely the
+        # weights L_sym was assembled from (the K-NN lists are directed and
+        # pre-symmetrisation, so they would not match).
+        W = -self.L_sym.copy()
+        W.setdiag(0.0)
+        W.eliminate_zeros()
+
+        d = np.asarray(W.sum(axis=1)).ravel()                # (N,)
+        s = np.einsum('ij,ij->i', X_np, Z)                   # X_j . z_j
+        flux = 0.5 * (
+            np.einsum('ij,ij->i', X_np, W @ Z)               # X_i . sum_j w_ij z_j
+            - d * s                                          # - (X_i . z_i) sum_j w_ij
+            + (W @ s)                                        # + sum_j w_ij (X_j . z_j)
+            - np.einsum('ij,ij->i', W @ X_np, Z)             # - (sum_j w_ij X_j) . z_i
+        )
+        b = -flux
+
+        # L is singular on the constants; project b onto the compatible
+        # subspace, then pin the gauge by shifting the source to zero.
+        b -= b.mean()
+
+        M_pre = sp.diags(1.0 / (self.L_sym.diagonal() + 1e-8))
+        phi, info = spla.cg(self.L_sym, b, rtol=1e-8, maxiter=5000, M=M_pre)
+        if info != 0:
+            print(f"[Heat III] Warning: CG exited with code {info}")
+
+        gi = self.goal_idx if goal_idx is None else goal_idx
+        phi = phi - phi[gi]
+        # phi must increase away from the source; CG returns it up to sign
+        # through the singular direction (cf. the mean-sign flip in
+        # computeGeodesicDistances).
+        if phi.mean() < 0:
+            phi = -phi
+        phi = phi - phi.min()
+
+        print(f"[Heat III] phi: [{phi.min():.4f}, {phi.max():.4f}] "
+              f"mean={phi.mean():.4f} | source residual={abs(phi[gi]):.2e}")
+        return phi
+
+    def solve_for_goal_heat_method(self, z_goal, u=None):
+        """Steps I-III end to end, returning phi alongside the Varadhan V.
+
+        Does not touch solve_for_goal or the surrogate; run both on the same
+        buffer and compare. Step I is reused as-is, including solver_mode.
+
+        Returns:
+            dict with 'phi' (heat method), 'V_varadhan' (-log u, unranked)
+            and 'X' (the unit field, useful on its own -- a gradient-based
+            planner consumes grad(phi) and can read X directly, skipping
+            step III entirely).
+        """
+        if u is None:
+            z_goal_proj = self.scaler_obj.transform(np.asarray(z_goal).reshape(1, -1))
+            goal_dists = np.linalg.norm(self.z_buffer_np - z_goal_proj, axis=1)
+            self.goal_idx = int(np.argmin(goal_dists))
+
+            N = self.L_sym.shape[0]
+            if self.solver_mode == 'rw_diffusion':
+                u = np.zeros(N)
+                u[self.goal_idx] = 1.0
+                for _ in range(self.rw_steps):
+                    u = self.P_trans @ u
+            else:
+                t = (self.sigma_perturb ** 2) * 500
+                rhs = np.zeros(N)
+                rhs[self.goal_idx] = 1.0
+                A_heat = sp.eye(N) + t * self.L_sym
+                M_pre = sp.diags(1.0 / (A_heat.diagonal() + 1e-8))
+                u, info = spla.cg(A_heat, rhs, rtol=1e-8, maxiter=5000, M=M_pre)
+                if info != 0:
+                    print(f"[Heat I] Warning: CG exited with code {info}")
+            u = np.maximum(u, 0.0)
+
+        X = self.compute_unit_gradient(u)
+        phi = self.solve_phi(X)
+
+        from scipy.stats import spearmanr
+        euclid = np.linalg.norm(self.z_buffer_np - self.z_buffer_np[self.goal_idx], axis=1)
+        V_var = -np.log(np.maximum(u, 1e-300))
+        print(f"[Compare] Spearman vs Euclid -- phi={spearmanr(phi, euclid).correlation:.4f} "
+              f"V_varadhan={spearmanr(V_var, euclid).correlation:.4f}")
+
+        return {'phi': phi, 'V_varadhan': V_var, 'X': X, 'u': u}
+
+    def fit_direction_surrogate(self, X, steps=400, lr=5e-3):
+        """Fit a smooth unit vector field to the step-II directions.
+
+        The planner queries at arbitrary rollout latents, not at graph nodes,
+        so X has to be interpolated. Fitting the *vector field* directly (as
+        opposed to fitting phi and differentiating it) avoids the
+        differentiate -> Poisson-integrate -> differentiate round trip, and
+        keeps |X| = 1 exactly at query time via an explicit renormalisation.
+
+        X is converted from scaled to unscaled latent coordinates first: a
+        gradient is a covector, so it maps as grad_z = grad_z_scaled / sigma.
+        The surrogate therefore predicts directions in the same coordinates
+        the planner's rollout latents live in, and no conversion is needed
+        during planning.
+
+        Args:
+            X: (N, D) unit directions at graph nodes, in scaled coordinates.
+        """
+        with torch.no_grad():
+            Xz = X / (self.proj_std + 1e-8)
+            Xz = Xz / Xz.norm(dim=-1, keepdim=True).clamp(min=1e-12)
+
+        D = self.graph_nodes.shape[1]
+        self.x_surrogate = nn.Sequential(
+            nn.Linear(D, 256), nn.Mish(),
+            nn.Linear(256, 256), nn.Mish(),
+            nn.Linear(256, D),
+        ).to(self.device)
+
+        opt = torch.optim.Adam(self.x_surrogate.parameters(), lr=lr)
+        self.x_surrogate.train()
+        for _ in range(steps):
+            opt.zero_grad()
+            pred = self.x_surrogate(self.graph_nodes)
+            pred = pred / pred.norm(dim=-1, keepdim=True).clamp(min=1e-12)
+            loss = (1.0 - (pred * Xz).sum(-1)).mean()      # mean cosine distance
+            loss.backward()
+            opt.step()
+
+        self.x_surrogate.eval()
+        for p in self.x_surrogate.parameters():
+            p.requires_grad = False
+        print(f"[Heat II] Direction surrogate: mean cosine error={loss.item():.4f} "
+              f"(0 = perfect)")
+        return self.x_surrogate
+
+    def set_direction_field(self, X):
+        """Store step-II directions for exact nearest-node lookup.
+
+        Preferred over fit_direction_surrogate: the injection
+        `loss += tau * <z_T, X.detach()>` uses X as a CONSTANT, so no
+        differentiable interpolant is needed and the MLP's fit error (which
+        reached cosine error 0.90 -- essentially orthogonal -- when trained on
+        a field that was 79% zeros) is removed entirely.
+
+        Converted to unscaled coordinates once, here: a gradient is a covector,
+        so grad_z = grad_z_scaled / sigma.
+        """
+        with torch.no_grad():
+            Xz = X / (self.proj_std + 1e-8)
+            n = Xz.norm(dim=-1, keepdim=True)
+            self.X_nodes = torch.where(n > 1e-12, Xz / n.clamp(min=1e-12),
+                                       torch.zeros_like(Xz))
+        frac = (self.X_nodes.norm(dim=-1) == 0).float().mean().item()
+        print(f"[Heat II] Direction field stored for lookup | "
+              f"degenerate nodes={100*frac:.2f}%")
+        return self.X_nodes
+
+    @torch.no_grad()
+    def lookup_direction(self, z_generated, chunk=4096):
+        """Exact X at the nearest graph node (no surrogate, no fit error)."""
+        zs = (z_generated - self.proj_mean) / (self.proj_std + 1e-8)
+        out = []
+        for s in range(0, len(zs), chunk):
+            idx = torch.cdist(zs[s:s + chunk], self.graph_nodes).argmin(dim=1)
+            out.append(self.X_nodes[idx])
+        return torch.cat(out)
+
+    def evaluate_direction(self, z_generated):
+        """Unit grad(phi) at arbitrary query latents.
+
+        Returns X pointing AWAY from the source, matching the sign convention
+        of the scalar path (V = -log u also increases away from the goal), so
+        that `loss += tau * <z, X>` descends toward the goal exactly as
+        `loss += tau * V` does.
+
+        Detached by design: it is injected as a known gradient rather than
+        differentiated through, so the planner never needs a second-order
+        graph.
+        """
+        with torch.no_grad():
+            z_scaled = (z_generated - self.proj_mean) / (self.proj_std + 1e-8)
+            X = self.x_surrogate(z_scaled)
+            X = X / X.norm(dim=-1, keepdim=True).clamp(min=1e-12)
+        return X
 
     def evaluate_rollout(self, z_generated):
         """
@@ -413,6 +775,10 @@ class GDPlanner(BasePlanner):
         replay_buffer_path=None,
         latent_key="proprio",
         hjb_tau=0.1,
+        guidance_mode='scalar',
+        v_control=None,
+        mse_weight=1.0,
+        metric_weights_path=None,
         use_isomap=False,
         isomap_landmarks=500,
         graph_n_nodes=55000,
@@ -444,6 +810,36 @@ class GDPlanner(BasePlanner):
         self.action_reg = action_reg
         self.latent_key = latent_key
         self.hjb_tau = hjb_tau
+        # 'scalar'    : loss += tau * V(z_T), V = -log u (Varadhan). V is
+        #               rank-normalised to ~[0, 2*phys_v_mean] while the MSE is
+        #               a mean over D dims, so tau absorbs a ~D*phys_v_mean unit
+        #               mismatch (~4000x for reacher) on top of any real weight.
+        # 'direction' : loss += tau * (z_T . X_T), |X_T| = 1. The gradient wrt
+        #               z_T is exactly X_T, so tau is a step size in latent
+        #               units and is dimensionally commensurate with the MSE
+        #               gradient. Only the direction of grad(u) is used, which
+        #               is the part that survives an approximate kernel
+        #               (Crane et al. 2017, step II).
+        self.guidance_mode = guidance_mode
+        self.v_control = v_control
+        # Scales the terminal MSE term. Set to 0 to test whether the heat
+        # guidance can drive planning on its own, with no goal-distance
+        # objective at all.
+        self.mse_weight = mse_weight
+
+        # Optional diagonal latent metric M = diag(w). The plain objective
+        # weights all D latent dims equally, but only ~21% of latent variance
+        # is task-relevant here, so most of the descent is spent matching
+        # nuisance directions. Weighting the terminal term by w concentrates
+        # it on the dims that carry task distance. w is learned from TEMPORAL
+        # pairs (|step_i - step_j| within an episode), so no state labels and
+        # no decoding are involved -- planning stays in latent space.
+        self.metric_w = None
+        if metric_weights_path is not None:
+            w = np.load(metric_weights_path).astype(np.float32)
+            self.metric_w = torch.tensor(w, device=self.device)
+            print(f"  Latent metric: {len(w)} dims, "
+                  f"top-10 carry {100*np.sort(w)[-10:].sum()/w.sum():.1f}% of weight")
         self.use_isomap = use_isomap
         self.isomap_landmarks = isomap_landmarks
         self.graph_n_nodes = graph_n_nodes
@@ -479,6 +875,7 @@ class GDPlanner(BasePlanner):
             print(f"  Using full-dim latents for graph: {graph_z_buffer.shape[1]}D")
 
         self.heat_solver = MCMollifiedHeat()
+        self.heat_solver.v_control = getattr(self, 'v_control', None)
         print(f"Compiling Latent Environment Graph (solver={self.solver_mode})...")
         self.heat_solver.compile_environment(
             z_buffer=graph_z_buffer,
@@ -568,7 +965,20 @@ class GDPlanner(BasePlanner):
         # Solve heat equation for the goal using the configured latent key
         goal_latent = self._get_latent(z_obs_g_detached)
         current_goal_np = goal_latent[0, 0].detach().cpu().numpy()
-        self.heat_solver.solve_for_goal(current_goal_np)
+        if self.guidance_mode == 'direction':
+            # Steps I-III, then fit the unit field. Step I is shared with the
+            # scalar path and honours solver_mode as before.
+            out = self.heat_solver.solve_for_goal_heat_method(current_goal_np)
+            self.heat_solver.set_direction_field(out['X'])
+        else:
+            self.heat_solver.solve_for_goal(current_goal_np)
+
+        # Opt-in diagnostic dump (GRASP_DEBUG_DUMP=<path>): records the goal
+        # latent and the predicted terminal latent per step, so the objective
+        # can be analysed offline without re-running the planner.
+        _dump_path = os.environ.get("GRASP_DEBUG_DUMP")
+        _dump = {"z_goal": goal_latent[0, 0].detach().cpu().numpy(),
+                 "z_term": [], "step": []} if _dump_path else None
 
         current_success = 0.0
         mean_dist = np.inf
@@ -605,8 +1015,17 @@ class GDPlanner(BasePlanner):
             B, T, D = latent_rollout.shape
 
             # Objective loss
-            loss = self.objective_fn(i_z_obses, z_obs_g_detached, final_noisy_actions)
+            if self.metric_w is not None:
+                # Metric-weighted terminal term, replacing the uniform mean
+                # over latent dims. Weights are normalised to mean 1 upstream,
+                # so this stays on the same scale as the unweighted MSE and
+                # hjb_tau keeps its meaning.
+                diff = latent_rollout[:, -1, :] - goal_latent.reshape(1, -1)
+                loss = (self.metric_w * diff.pow(2)).mean(dim=-1)
+            else:
+                loss = self.objective_fn(i_z_obses, z_obs_g_detached, final_noisy_actions)
             mse_val = loss.mean().item()
+            loss = self.mse_weight * loss
 
             # L2 action regularization with annealing: starts strong to prevent
             # adversarial exploitation, decays to let MSE gradients take over
@@ -614,12 +1033,26 @@ class GDPlanner(BasePlanner):
                 reg_weight = self.action_reg * max(0.0, 1.0 - (i / float(self.opt_steps)))
                 loss = loss + reg_weight * (actions ** 2).mean()
 
-            # V guidance: backprop directly through surrogate MLP at terminal state
+            # Heat guidance at the terminal state.
             tau = self.hjb_tau
             terminal_latent = latent_rollout[:, -1, :]
-            v_terminal = self.heat_solver.evaluate_rollout(terminal_latent)
-            v_val = v_terminal.mean().item()
-            loss = loss + tau * v_terminal.mean()
+            if self.guidance_mode == 'direction':
+                # Gradient injection: d/dz_T of (z_T . X_T) is exactly X_T, a
+                # unit vector, so no scalar potential and no second-order graph
+                # are needed. The reported value is a dot product, not a
+                # distance, so it is not comparable to the scalar path's V.
+                X_terminal = self.heat_solver.lookup_direction(terminal_latent)
+                guide = (terminal_latent * X_terminal).sum(dim=-1)
+                v_val = guide.mean().item()
+                loss = loss + tau * guide.mean()
+            else:
+                v_terminal = self.heat_solver.evaluate_rollout(terminal_latent)
+                v_val = v_terminal.mean().item()
+                loss = loss + tau * v_terminal.mean()
+
+            if _dump is not None:
+                _dump["z_term"].append(latent_rollout[0, -1, :].detach().cpu().numpy())
+                _dump["step"].append(i)
 
             # Backpropagate
             total_loss = loss.mean() * self.num_samples
@@ -703,12 +1136,21 @@ class GDPlanner(BasePlanner):
         self.exit_step = exit_step
         self.total_measured_time = total_measured_time
 
+        if _dump is not None:
+            _da = self.preprocessor.denormalize_actions(
+                rearrange(actions.detach().cpu(), "b t (f d) -> b (t f) d",
+                          f=self.evaluator.frameskip)).numpy()
+            np.savez(_dump_path, z_goal=_dump["z_goal"], exec_actions=_da,
+                     z_term=np.array(_dump["z_term"]), step=np.array(_dump["step"]))
+            print(f"[Debug] dumped {len(_dump['z_term'])} terminal latents -> {_dump_path}")
+
         task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
         if task_id is not None:
             log_filename = f"seed_success_chunk_{task_id}.txt"
         else:
             log_filename = "seed_success_log.txt"
-        with open(f"/scratch/gilbreth/hviswan/grasp/{log_filename}", "a") as f:
+        results_dir = os.environ.get("GRASP_RESULTS_DIR", os.getcwd())
+        with open(os.path.join(results_dir, log_filename), "a") as f:
             f.write(f"{current_success} {mean_dist} {mean_vis_dist} {mean_proprio_dist} {i}\n")
 
         return actions, np.full(n_evals, np.inf)

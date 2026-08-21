@@ -1,0 +1,33 @@
+_target_: planning.gd.GDPlanner
+horizon: 5
+sample_type: 'zero'
+
+lr: 0.1
+opt_steps: 300
+eval_every: 1
+var_actions: 0.0
+var_states: 0.0
+num_samples: 1
+action_clamp: 0
+action_reg: 0.0
+
+replay_buffer_path: /scratch/gilbreth/hviswan/grasp/latent_buffers/lewm_reacher_buffer.pt
+latent_key: visual
+
+hjb_tau: 0.05
+solver_mode: heat
+rw_steps: 20
+graph_k_neighbors: 64
+use_full_dim: true
+graph_n_nodes: 55000
+# NOTE: despite this file's name, isomap is OFF. The shipped runs behind
+# seed_success_log.txt used random-walk diffusion on a Euclidean kNN graph in
+# full 192-D. Set to true to actually get geodesic (Dijkstra) kNN.
+use_isomap: false
+
+name: gd_reacher_heat_dir
+
+# Heat-method step II guidance: loss += hjb_tau * <z_T, X>, |X| = 1.
+# tau is a step size in latent units, not a scaling against a rank-normalised
+# potential, so it is commensurate with the MSE gradient (see GDPlanner).
+guidance_mode: direction

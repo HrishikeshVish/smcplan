@@ -1,0 +1,30 @@
+_target_: planning.wmreward.WMRewardPlanner
+horizon: 5
+opt_steps: 150
+eval_every: 1
+
+# search: test-time compute knob (WMReward scales this)
+num_samples: 256
+topk: 16
+var_scale: 0.5
+elite_momentum: 0.5
+
+# steer: gradient refinement of elites, differentiable term only. 0 = pure search.
+steer_steps: 0
+steer_lr: 0.05
+
+# reward = w_goal * ||z_T - z_g||^2 + w_phi * phi(z_T) + w_surprise * dist-to-manifold
+w_goal: 1.0
+w_phi: 0.5
+w_surprise: 1.0
+
+replay_buffer_path: /home/hviswan/Documents/grasp/latent_buffers/lewm_reacher_fixed.pt
+latent_key: visual
+graph_n_nodes: 55000
+graph_k_neighbors: 32
+solver_mode: heat
+rw_steps: 20
+use_isomap: false
+action_clamp: 0
+
+name: wmreward
