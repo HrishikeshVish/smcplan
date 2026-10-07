@@ -182,8 +182,12 @@ class CEMPlanner(BasePlanner):
             log_filename = f"seed_success_chunk_{task_id}.txt"
         else:
             log_filename = "seed_success_log.txt"
-        with open(f"/scratch/gilbreth/hviswan/grasp/{log_filename}", "a") as f:
-           f.write(f"{current_success} {mean_dist} {mean_vis_dist} {mean_proprio_dist} {i}\n")
+        # Honour GRASP_RESULTS_DIR like the other planners; the old hardcoded
+        # /scratch path does not exist off the cluster and made every CEM run
+        # exit non-zero after planning had already succeeded.
+        results_dir = os.environ.get("GRASP_RESULTS_DIR", os.getcwd())
+        with open(os.path.join(results_dir, log_filename), "a") as f:
+            f.write(f"{current_success} {mean_dist} {mean_vis_dist} {mean_proprio_dist} {i}\n")
         # ------------------------------------------
 
         return mu, np.full(n_evals, np.inf)  # all actions are valid

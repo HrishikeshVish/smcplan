@@ -14,6 +14,6 @@ action_clamp: 0 # clamp value for actions; 0 means no clamping
 replay_buffer_path: /scratch/gilbreth/hviswan/dino_wm/pointmaze_offline_replay_buffer.pt
 latent_key: proprio  # 'proprio' (pointmaze) or 'visual' (pusht, lewm)
 
-hjb_tau: 0.1  # weight for V guidance at terminal state
+hjb_tau: 0.0  # weight for V guidance at terminal state
 
 name: gd

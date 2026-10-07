@@ -187,10 +187,33 @@ class DMControlEnvWrapper:
         state_dists = np.linalg.norm(goal_states - cur_states, axis=-1)
 
         if 'Cube' in self.env_name or 'OGB' in self.env_name:
-            successes = state_dists <= 0.04
+            # Match the reference implementation exactly: OGBench scores a cube
+            # by the EUCLIDEAN DISTANCE OF ITS POSITION to the target,
+            # ||obj_pos - tar_pos|| <= 0.04
+            # (stable_worldmodel/envs/ogbench/cube_env.py:1318-1344, and the
+            # identical scene_env.py:936-945).
+            #
+            # This used to compare the FULL 41-dim state against 0.04, which is
+            # unreachable: state = concat(qpos[21], qvel[20]), so it demanded the
+            # UR5e arm, the Robotiq gripper, the cube pose AND all 20 velocities
+            # agree to 0.04 in aggregate. Measured 2026-09-15, the best full-state
+            # distance over 311 evaluations of an MPC-CEM run was 0.985 -- 25x the
+            # threshold -- so every planner scored 0 regardless of quality.
+            #
+            # Layout (verified against the live model, njnt=15, nq=21, nv=20):
+            #   [0:14]  ur5e arm + robotiq gripper joints
+            #   [14:17] object_joint_0 free-joint POSITION  <- scored
+            #   [17:21] object_joint_0 quaternion
+            #   [21:41] velocities
+            CUBE_POS = slice(14, 17)
+            pos_dists = np.linalg.norm(
+                goal_states[..., CUBE_POS] - cur_states[..., CUBE_POS], axis=-1
+            )
+            successes = pos_dists <= 0.04
             return {
                 'success': successes,
                 'state_dist': state_dists,
+                'cube_pos_dist': pos_dists,
             }
         else:
             n_qpos = goal_states.shape[-1] // 2
@@ -215,6 +238,10 @@ class DMControlEnvWrapper:
         goal_states = []
         for i, env in enumerate(self.envs):
             env.reset(seed=int(seeds[i]))
+            # reset(seed=) seeds the env but NOT the action space, which has
+            # its own generator. Without this the goal (10 random steps from
+            # the start) differed on every run of the same seed.
+            env.action_space.seed(int(seeds[i]))
             init_states.append(self._get_env_state(env))
             # Take random steps to get a different state as goal
             for _ in range(10):
@@ -235,6 +262,12 @@ class DMControlEnvWrapper:
         # Direct dm_control env
         if hasattr(unwrapped, 'physics'):
             return unwrapped.physics
+        # OGBench / gymnasium-robotics style (e.g. swm/OGBCube-v0's CubeEnv):
+        # MuJoCo model and data hang directly off the env, with no .physics.
+        # Callers only ever touch physics.data.qpos / .qvel, so returning the
+        # env itself satisfies that interface.
+        if hasattr(unwrapped, 'data') and hasattr(unwrapped.data, 'qpos'):
+            return unwrapped
         return None
 
     def _get_env_state(self, env):
@@ -252,9 +285,10 @@ class DMControlEnvWrapper:
         # Prefer the wrapper's set_state() method (handles act array, forward())
         if hasattr(unwrapped, 'set_state'):
             physics = self._get_physics(env)
-            n = len(physics.data.qpos)
-            unwrapped.set_state(state[:n], state[n:])
-            return
+            if physics is not None:
+                n = len(physics.data.qpos)
+                unwrapped.set_state(state[:n], state[n:])
+                return
         physics = self._get_physics(env)
         if physics is not None:
             n = len(physics.data.qpos)

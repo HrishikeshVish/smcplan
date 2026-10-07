@@ -53,7 +53,7 @@ class MCMollifiedHeat:
                              K_neighbors=32, mc_candidates=4096, chunk_size=8192,
                              use_isomap=False, isomap_landmarks=500,
                              solver_mode='heat', rw_steps=10,
-                             use_spatial_knn=False):
+                             use_spatial_knn=False, knn_dedup=True):
         """
         Builds an undirected reachability graph using Monte Carlo mollified K-NN.
 
@@ -90,6 +90,9 @@ class MCMollifiedHeat:
             rng = np.random.RandomState(42)
             idx = rng.choice(z_scaled.shape[0], n_nodes, replace=False)
             z_scaled, z_next_scaled = z_scaled[idx], z_next_scaled[idx]
+        else:
+            idx = np.arange(z_scaled.shape[0])
+        self.node_idx = idx          # buffer row of each vertex (episode lookup)
 
         self.z_buffer_np = z_scaled
         self.graph_nodes = torch.tensor(z_scaled, dtype=torch.float32, device=self.device)
@@ -129,6 +132,17 @@ class MCMollifiedHeat:
                     chunk_k_dists, chunk_k_local = torch.topk(-dists, k=ck, dim=1)
                     chunk_k_dists = -chunk_k_dists
                     chunk_k_indices = cand_idx[chunk_k_local]
+                    # Rounds draw candidates independently, so a vertex already in
+                    # the running top-K can be drawn again; without this mask it is
+                    # kept twice and csr_matrix below SUMS the duplicate entries,
+                    # multiplying that edge's weight (measured before the fix: 100%
+                    # of rows on the multi-round roadmaps, 42-46 distinct of 64).
+                    if knn_dedup and r > 0:
+                        prev = all_k_indices[start:end]
+                        prev_ok = torch.isfinite(all_k_dists[start:end])
+                        dup = ((chunk_k_indices[:, :, None] == prev[:, None, :])
+                               & prev_ok[:, None, :]).any(-1)
+                        chunk_k_dists = chunk_k_dists.masked_fill(dup, float('inf'))
 
                     merged_dists = torch.cat([all_k_dists[start:end], chunk_k_dists], dim=1)
                     merged_indices = torch.cat([all_k_indices[start:end], chunk_k_indices], dim=1)
@@ -239,6 +253,7 @@ class MCMollifiedHeat:
             # Unnormalized graph Laplacian: L = D - W (symmetric positive semi-definite)
             d = np.array(W_sym.sum(axis=1)).flatten()
             self.L_sym = sp.diags(d) - W_sym
+            self.degree = d
 
             self.knn_indices = all_k_indices.cpu().numpy()
             self.knn_weights = W_local_np
@@ -296,6 +311,14 @@ class MCMollifiedHeat:
             # equilibrium -- measured u range collapses to 1.7x and V's total
             # variation to 0.081 (vs 6.87 at m=1), leaving no slope to descend.
             t = h2 * getattr(self, 'heat_m', 1.0)
+            # 'degree': make tL dimensionless, t = heat_c / median(D_ii). Crane's
+            # t = m h^2 is scale-invariant only because their Laplacian carries
+            # a 1/h^2 mass normalisation; L = D - W here has dimensionless
+            # weights, so t = sigma^2 puts t*D_ii anywhere from ~1e-2 (wall) to
+            # ~1e2 (cube) and the solve is in a different regime per env.
+            if getattr(self, 'heat_t_rule', 'bandwidth') == 'degree':
+                t = getattr(self, 'heat_c', 1.0) / float(np.median(self.degree))
+            self.heat_t = t
             b = np.zeros(N)
             b[self.goal_idx] = 1.0
             A_heat = sp.eye(N) + t * self.L_sym
@@ -390,13 +413,20 @@ class MCMollifiedHeat:
             p.requires_grad = True
 
         optimizer = torch.optim.Adam(self.v_surrogate.parameters(), lr=5e-3)
+        # surrogate_steps > 250 also anneals the learning rate (cosine): the
+        # sharper fields of a small-k roadmap are not fit in 250 constant-lr steps.
+        n_steps = int(getattr(self, 'surrogate_steps', 250))
+        sched = (torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, n_steps)
+                 if n_steps > 250 else None)
         self.v_surrogate.train()
-        for step in range(250):
+        for step in range(n_steps):
             optimizer.zero_grad()
             pred = self.v_surrogate(self.graph_nodes).squeeze()
             loss = nn.functional.mse_loss(pred, self.V_graph)
             loss.backward()
             optimizer.step()
+            if sched is not None:
+                sched.step()
 
         self.v_surrogate.eval()
         for p in self.v_surrogate.parameters():
@@ -775,6 +805,12 @@ class GDPlanner(BasePlanner):
         replay_buffer_path=None,
         latent_key="proprio",
         hjb_tau=0.1,
+        heat_t_rule="bandwidth",
+        heat_c=1.0,
+        surrogate_steps=250,
+        num_candidates=1,
+        cand_chunk=0,
+        cand_sync_interval=100,
         guidance_mode='scalar',
         v_control=None,
         mse_weight=1.0,
@@ -806,6 +842,12 @@ class GDPlanner(BasePlanner):
         self.var_actions = var_actions
         self.var_states = var_states
         self.num_samples = num_samples
+        # Multi-start GD: num_candidates independent action sequences, each
+        # optimised by its own gradient; the lowest-objective one is executed.
+        # 1 = the original single-sequence planner (plan() path unchanged).
+        self.num_candidates = int(num_candidates)
+        self.cand_chunk = int(cand_chunk)
+        self.cand_sync_interval = int(cand_sync_interval)
         self.action_clamp = action_clamp
         self.action_reg = action_reg
         self.latent_key = latent_key
@@ -848,7 +890,19 @@ class GDPlanner(BasePlanner):
         self.graph_k_neighbors = graph_k_neighbors
         self.use_full_dim = use_full_dim
 
-        # Load replay buffer and build graph
+        # Load replay buffer and build graph.
+        # At hjb_tau == 0 the guidance term is multiplied by zero, so V is never
+        # used: skip the buffer load and the k-NN graph build entirely. This
+        # keeps the un-guided baseline runnable on environments that have no
+        # latent buffer, and avoids paying graph construction on every run.
+        self.heat_solver = None
+        self.pca_info = None           # set below when a buffer is loaded
+        if hjb_tau == 0 and guidance_mode != 'direction':
+            print("[Plan] hjb_tau=0 -> skipping replay buffer / graph (V unused)")
+            self._skip_v = True
+            return
+
+        self._skip_v = False
         if replay_buffer_path is None:
             raise ValueError(
                 "replay_buffer_path must be set in the planner config. "
@@ -876,6 +930,9 @@ class GDPlanner(BasePlanner):
 
         self.heat_solver = MCMollifiedHeat()
         self.heat_solver.v_control = getattr(self, 'v_control', None)
+        self.heat_solver.heat_t_rule = heat_t_rule   # see solve_for_goal
+        self.heat_solver.heat_c = float(heat_c)
+        self.heat_solver.surrogate_steps = int(surrogate_steps)
         print(f"Compiling Latent Environment Graph (solver={self.solver_mode})...")
         self.heat_solver.compile_environment(
             z_buffer=graph_z_buffer,
@@ -934,6 +991,115 @@ class GDPlanner(BasePlanner):
     def get_action_optimizer(self, actions):
         return torch.optim.SGD([actions], lr=self.lr)
 
+    def _plan_multistart(self, obs_0, obs_g):
+        """GD with C = num_candidates independent starts (baseline config only:
+        no heat guidance, no action/state noise smoothing, num_samples=1).
+
+        Each candidate gets the gradient of its own objective (sum over
+        candidates, so gradients are not coupled or rescaled). Backward runs
+        in chunks of cand_chunk candidates -- exact, since candidates are
+        independent -- to bound memory. At every evaluation, and for the final
+        plan, the candidate with the lowest current objective is executed: the
+        same selection rule the EM-SMC planner applies to its particles.
+        """
+        assert self.var_states == 0 and self.heat_solver is None \
+            and self.metric_w is None, "multi-start GD supports the baseline configs only"
+        C, S = self.num_candidates, self.num_samples
+        trans_obs_0, z_obs_0, trans_obs_g, z_obs_g = self.preprocess_start_goal(obs_0, obs_g, encode_to_vector=False)
+        # Mirrors GRASP's own multi-trajectory mode (planning/grasp.py,
+        # num_parallel_trajectories): every candidate from the planner's own
+        # initialisation; the lowest-loss candidate is executed at each
+        # evaluation and returned; and every cand_sync_interval steps (GRASP:
+        # gd_interval=100, iter % interval == 0 and iter > 0) the best
+        # candidate is copied into all slots (data only, optimiser state kept,
+        # as GRASP does).
+        cands = [self.init_actions(obs_0, None) for _ in range(C)]
+        actions = torch.cat(cands, dim=0).to(self.device).requires_grad_(True)   # (C, H, A)
+        optimizer = torch.optim.Adam([actions], lr=self.lr)
+        ch = self.cand_chunk if self.cand_chunk > 0 else C * self.num_samples   # rows per rollout
+
+        def expand(x, n):
+            if isinstance(x, dict):
+                return {k: v[:1].repeat_interleave(n, dim=0) for k, v in x.items()}
+            return x[:1].repeat_interleave(n, dim=0)
+
+        max_success_rate, current_success = 0.0, 0.0
+        mean_dist = mean_vis_dist = mean_proprio_dist = np.inf
+        total_measured_time, exit_step = 0.0, self.opt_steps
+        cand_loss = torch.full((C,), float('inf'), device=self.device)
+        best = 0
+        for i in range(self.opt_steps):
+            start = time.perf_counter()
+            optimizer.zero_grad()
+            decay = max(0.0, 1.0 - (i / float(self.opt_steps)))
+            reg_weight = self.action_reg * decay
+            noise = self.var_actions * decay        # annealed smoothing noise, as in plan()
+            # Rows = (smoothing sample s, candidate j), r = s * C + j. Chunk over
+            # rows: each row's gradient depends only on its own rollout, so the
+            # accumulated gradient is exact whatever the chunk size; it only
+            # bounds memory (C=1, S=12 is smoothed GD on one trajectory).
+            eps = torch.randn(S, C, *actions.shape[1:], device=actions.device)
+            cand_loss = torch.zeros(C, device=self.device)
+            R = S * C
+            for r0 in range(0, R, ch):
+                r = torch.arange(r0, min(r0 + ch, R), device=actions.device)
+                si, ji = r // C, r % C
+                n = r.numel()
+                ob = expand(trans_obs_0, n)
+                gb = ({k: v.detach() for k, v in expand(z_obs_g, n).items()}
+                      if isinstance(z_obs_g, dict) else expand(z_obs_g, n).detach())
+                an = actions[ji] + noise * eps[si, ji]
+                i_z, _ = self.wm.rollout(obs_0=ob, act=an)
+                lr_ = self.mse_weight * self.objective_fn(i_z, gb, an) / S      # (n,)
+                cand_loss.index_add_(0, ji, lr_.detach())
+                lr_.sum().backward()
+            if self.action_reg > 0:
+                (reg_weight * (actions ** 2).mean(dim=(1, 2))).sum().backward()
+            optimizer.step()
+            with torch.no_grad():
+                if self.action_clamp > 0:
+                    actions.data.clamp_(-self.action_clamp, self.action_clamp)
+            best = int(torch.argmin(cand_loss))
+            if self.cand_sync_interval > 0 and i % self.cand_sync_interval == 0 and i > 0:
+                with torch.no_grad():
+                    actions.data = actions.data[best:best + 1].repeat(C, 1, 1)
+                print(f"[Plan-MS] step={i:4d} | sync: candidate {best} copied to all {C} slots")
+            total_measured_time += time.perf_counter() - start
+            if i % self.eval_every == 0:
+                print(f"[Plan-MS] step={i:4d} | C={C} | best MSE={cand_loss[best].item():.4f} "
+                      f"| mean MSE={cand_loss.mean().item():.4f} | best={best}")
+            if self.evaluator is not None and i % self.eval_every == 0:
+                logs, successes, _, _ = self.evaluator.eval_actions(
+                    actions[best:best + 1].detach(), filename=f"{self.logging_prefix}_output_{i+1}")
+                current_success = float(successes.mean())
+                max_success_rate = max(max_success_rate, current_success)
+                mean_dist = logs.get('mean_state_dist'); mean_vis_dist = logs.get('mean_visual_dist')
+                mean_proprio_dist = logs.get('mean_proprio_dist')
+                logs = {f"{self.logging_prefix}/{k}": v for k, v in logs.items()}
+                logs.update({"total_measured_time": total_measured_time, "step": i + 1})
+                self.wandb_run.log(logs); self.dump_logs(logs)
+                if np.all(successes):
+                    print("######## Success At Step", i + 1, "########")
+                    exit_step = i + 1
+                    break
+            if total_measured_time > 1800:
+                exit_step = i + 1
+                break
+        final = actions[best:best + 1].detach()
+        logs, successes, _, _ = self.evaluator.eval_actions(final, filename=f"{self.logging_prefix}_output_final")
+        current_success = max(float(successes.mean()), 0.0)
+        max_success_rate = max(max_success_rate, current_success)
+        mean_dist = logs.get('mean_state_dist'); mean_vis_dist = logs.get('mean_visual_dist')
+        mean_proprio_dist = logs.get('mean_proprio_dist')
+        logs = {f"{self.logging_prefix}/{k}": v for k, v in logs.items()}
+        logs.update({"total_measured_time": total_measured_time, "step": self.opt_steps})
+        self.wandb_run.log(logs); self.dump_logs(logs)
+        self.exit_step, self.total_measured_time = exit_step, total_measured_time
+        results_dir = os.environ.get("GRASP_RESULTS_DIR", os.getcwd())
+        with open(os.path.join(results_dir, "seed_success_log.txt"), "a") as f:
+            f.write(f"{max_success_rate} {mean_dist} {mean_vis_dist} {mean_proprio_dist} {i}\n")
+        return final, np.full(1, np.inf)
+
     def plan(self, obs_0, obs_g, actions=None):
         """
         Args:
@@ -941,6 +1107,8 @@ class GDPlanner(BasePlanner):
         Returns:
             actions: (B, T, action_dim) torch.Tensor
         """
+        if self.num_candidates > 1 or self.cand_chunk > 0:
+            return self._plan_multistart(obs_0, obs_g)
         trans_obs_0, z_obs_0, trans_obs_g, z_obs_g = self.preprocess_start_goal(obs_0, obs_g, encode_to_vector=False)
         actions = self.init_actions(obs_0, actions).to(self.device)
         actions_noise = torch.full((1, 1, 1, self.action_dim), fill_value=self.var_actions).to(actions)
@@ -965,7 +1133,9 @@ class GDPlanner(BasePlanner):
         # Solve heat equation for the goal using the configured latent key
         goal_latent = self._get_latent(z_obs_g_detached)
         current_goal_np = goal_latent[0, 0].detach().cpu().numpy()
-        if self.guidance_mode == 'direction':
+        if self.heat_solver is None:
+            pass                       # hjb_tau == 0: nothing to solve
+        elif self.guidance_mode == 'direction':
             # Steps I-III, then fit the unit field. Step I is shared with the
             # scalar path and honours solver_mode as before.
             out = self.heat_solver.solve_for_goal_heat_method(current_goal_np)
@@ -1036,7 +1206,9 @@ class GDPlanner(BasePlanner):
             # Heat guidance at the terminal state.
             tau = self.hjb_tau
             terminal_latent = latent_rollout[:, -1, :]
-            if self.guidance_mode == 'direction':
+            if self.heat_solver is None:
+                v_val = 0.0            # hjb_tau == 0: term contributes nothing
+            elif self.guidance_mode == 'direction':
                 # Gradient injection: d/dz_T of (z_T . X_T) is exactly X_T, a
                 # unit vector, so no scalar potential and no second-order graph
                 # are needed. The reported value is a dot product, not a

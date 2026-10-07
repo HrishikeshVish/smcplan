@@ -1,0 +1,47 @@
+_target_: planning.fk_planner.FKSMCPlanner
+horizon: 5
+opt_steps: 300
+eval_every: 1
+
+# Kernel block identical to fk.yaml / fk_pointmaze.yaml / fk_pusht.yaml: tuned on
+# reacher and held fixed across environments, so a per-env row differs only in
+# the roadmap and the buffer, never in the optimiser.
+num_particles: 32
+num_langevin_steps: 1
+langevin_lr: 0.1
+action_reg: 0.1
+num_smooth_samples: 8
+smooth_sigma: 1.0
+langevin_temp: 0.001
+beta_max: 1.0
+init_std: 1.0
+ess_target_frac: 0.5
+
+action_clamp: 0
+
+# Wall is the DINO-WM path (like pointmaze and pusht), so latent_key is the 10-D
+# proprio readout, NOT reacher's 192-D visual token. Expect the same VRAM
+# ceiling as the other DINO-WM envs -- 196 ViT patch tokens per frame retained
+# through the rollout for autograd -- so the sweep overrides num_particles to 3
+# rather than using the 32 above.
+#
+# Buffer: built 2026-09-19 by
+#   python build_latent_buffer.py --env wall_single --latent-key proprio \
+#       --max-episodes 1400
+# 1400 of 1920 episodes -> 12600 transitions. Wall episodes are short, so the
+# node count is well below reacher's 55k; graph_n_nodes is set to match rather
+# than silently subsampling to a larger figure.
+#
+# VERIFY dmin in the planner log before trusting any V number: the old reacher
+# buffer was encoded without the ImageNet transform and sat ~161 scaled units
+# from every query, making V pure noise with nothing crashing.
+replay_buffer_path: /home/hviswan/Documents/grasp/latent_buffers/wall_buffer.pt
+latent_key: proprio
+solver_mode: heat
+rw_steps: 20
+graph_k_neighbors: 64
+use_full_dim: true
+graph_n_nodes: 12600
+use_isomap: false
+
+name: fk_wall

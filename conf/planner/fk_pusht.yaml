@@ -1,0 +1,40 @@
+_target_: planning.fk_planner.FKSMCPlanner
+horizon: 5
+opt_steps: 300
+eval_every: 1
+
+# Population + AIS/SMC-sampler mechanics (see fk-smc-planner-design memory).
+# Kernel block (langevin_lr .. ess_target_frac) is identical to fk.yaml and
+# fk_pointmaze.yaml on purpose: the kernel was tuned on reacher and is held
+# fixed across envs so the per-env rows differ only in the graph/buffer.
+num_particles: 32
+num_langevin_steps: 1
+langevin_lr: 0.1
+action_reg: 0.1
+num_smooth_samples: 8
+smooth_sigma: 1.0
+langevin_temp: 0.001
+beta_max: 1.0
+init_std: 1.0
+ess_target_frac: 0.5
+
+action_clamp: 0
+
+# PushT is the DINO-WM path, so the cost-to-go graph is built over the 10-D
+# proprio readout, as for pointmaze -- NOT reacher's 192-D visual token.
+# latent_buffers/pusht_offline_replay_buffer.pt (built 2026-08-30) is already
+# in the (z_curr, z_next) schema _load_replay_buffer expects: 994573 pairs at
+# D=10, plus y_curr/y_next raw states that the graph does not use.
+# graph_n_nodes subsamples that to 55000 (gd.py:89), matching reacher's node
+# count so graph density is comparable across the two rows; pointmaze cannot
+# match it because its dataset is 90% incomplete (3800 transitions).
+replay_buffer_path: /home/hviswan/Documents/grasp/latent_buffers/pusht_offline_replay_buffer.pt
+latent_key: proprio
+solver_mode: heat
+rw_steps: 20
+graph_k_neighbors: 64
+use_full_dim: true
+graph_n_nodes: 55000
+use_isomap: false
+
+name: fk_pusht

@@ -187,6 +187,62 @@ class LeWMWorldModel(nn.Module):
         }
         return z_obses, z
 
+    def rollout_encoded(self, z_obs_0, act):
+        """Unroll the world model from already-encoded latents.
+
+        Mirrors rollout() with the encoding step removed, so that
+        rollout_encoded(encode_obs(obs)['visual'], act) reproduces
+        rollout(obs, act) exactly. Used by GRASP and LatCO, which roll out
+        from virtual states that never correspond to real pixels.
+
+        Args:
+            z_obs_0: (B, T_init, 1, D) encoded states, or a dict with 'visual'
+            act: (B, T_total, action_dim) where T_total = T_init + horizon
+
+        Returns:
+            z_obses: dict with 'visual' (B, T_total+1, 1, D), 'proprio'
+            z: (B, T_total+1, 1, D + action_dim) state embeddings with a
+               zero action block appended. LeWM does not concatenate action
+               embeddings into its latents (see separate_emb), while GRASP
+               recovers states as z[..., :-wm.action_dim]; the zero block
+               makes that slice well defined and exactly state-preserving.
+        """
+        if isinstance(z_obs_0, dict):
+            z_obs_0 = z_obs_0['visual']
+
+        emb = z_obs_0.squeeze(2)  # (B, T_init, D)
+        B, T_init, _ = emb.shape
+        T_total = act.shape[1]
+        horizon = T_total - T_init
+
+        act_0 = act[:, :T_init]
+        act_future = act[:, T_init:]
+
+        HS = self.history_size
+        current_emb = emb
+        current_act = act_0
+
+        for t in range(horizon):
+            act_emb = self.jepa.action_encoder(current_act)
+            pred = self.jepa.predict(current_emb[:, -HS:], act_emb[:, -HS:])[:, -1:]
+            current_emb = torch.cat([current_emb, pred], dim=1)
+            current_act = torch.cat([current_act, act_future[:, t:t + 1]], dim=1)
+
+        # Final prediction, matching rollout()
+        act_emb = self.jepa.action_encoder(current_act)
+        pred = self.jepa.predict(current_emb[:, -HS:], act_emb[:, -HS:])[:, -1:]
+        current_emb = torch.cat([current_emb, pred], dim=1)
+
+        z_state = current_emb.unsqueeze(2)  # (B, T_total+1, 1, D)
+        z = torch.cat(
+            [z_state, z_state.new_zeros(*z_state.shape[:-1], self.action_dim)],
+            dim=-1,
+        )
+
+        proprio = z_state.new_zeros(B, z_state.shape[1], self.proprio_dim)
+        z_obses = {'visual': z_state, 'proprio': proprio}
+        return z_obses, z
+
     def next_state(self, z_state, actions):
         """Predict next states given current states and actions.
 

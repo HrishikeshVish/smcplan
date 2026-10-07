@@ -19,7 +19,15 @@ image_size: 224
 
 # LeWM config
 history_size: 3
-action_dim: 10
+# 5, not 10: the OGBench cube action is 5-D. Verified three ways --
+# dsets/dmcontrol_dset reports action_dim=5 for cube_single_expert.h5, the
+# checkpoint's action_encoder takes input_dim=25 = 5 x frameskip(5), and
+# plan.py:250 sizes the planner as dset.action_dim*frameskip = 25.
+# The stale 10 leaked in through plan.py:899 -> wm.action_dim, which
+# plan.py:469 uses to sample goal_source=random_state goals: goals were drawn
+# with 10-wide actions while planning ran in 25-wide space. Silent, not a
+# crash -- it scored 0/78 before this was caught (2026-09-15).
+action_dim: 5
 proprio_dim: 0
 
 # Eval config (matching le-wm)

@@ -1,0 +1,41 @@
+_target_: planning.gd.GDPlanner
+horizon: 5
+
+# Cube-tuned GD, modelled on gd_reacher.yaml (the other LeWM env).
+#
+# WHY THIS EXISTS. The generic gd.yaml has num_samples=1, var_actions=0.0 and
+# no action_reg -- i.e. NO landscape smoothing. On cube that optimizer walks
+# AWAY from the goal: measured 2026-09-15 at goal_H=5, state_dist went
+# 8.58 -> 10.69 over 150 steps, while CEM on the same seed descended
+# 3.74 -> 3.29. So cube's GD row was not a hard-task result, it was an
+# unsmoothed optimizer diverging.
+#
+# The smoothing is the mechanism behind gd_reacher's 93% on the sibling env:
+# each step evaluates the loss at num_samples noised copies of the action
+# sequence and descends the mean (Gaussian-convolved landscape, coarse to
+# fine), with the annealed L2 action reg as gd.py's anti-exploitation device.
+sample_type: 'zero'
+lr: 0.1
+opt_steps: 300
+eval_every: 1
+var_actions: 1.0
+num_samples: 8
+var_states: 0.0
+action_clamp: 0
+action_reg: 0.1
+
+# BUDGET WARNING: num_samples=8 means 8 rollouts per optimizer step, so at the
+# sweep's opt_steps=150 this arm costs 1200 rollouts vs the 150 that gd/grasp/
+# cem are matched to in run_sweep.sh. Either match the rollout count (cut
+# opt_steps, or give every planner on cube the same larger budget) or report
+# cube separately and say so -- do not drop this row next to the matched ones.
+
+# latent_key: visual, NOT the generic gd.yaml's 'proprio'. Cube is the LeWM
+# path (proprio_dim: 0 in conf/env/cube.yaml), so a proprio readout is empty.
+# Harmless while hjb_tau=0 since V is never queried, but wrong the moment
+# anyone turns guidance on.
+replay_buffer_path: null
+latent_key: visual
+hjb_tau: 0.0
+
+name: gd_cube

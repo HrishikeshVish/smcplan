@@ -392,6 +392,19 @@ class GRASPPlanner(BasePlanner):
 
         return z_state_expanded
 
+    def _best_parallel_indices(self, f_next_state, z_state_expanded, n_evals_original, n_parallel):
+        """Index of the lowest terminal dynamics-loss trajectory per original eval.
+
+        Uses the same criterion as _select_best_trajectory, but reads the
+        tensors the optimization closure already produced, so selecting over
+        the parallel population costs no additional world-model rollouts.
+        """
+        with torch.no_grad():
+            dyn = (f_next_state[:, [-1]] - z_state_expanded[:, [-1]]).pow(2).mean(
+                dim=tuple(range(1, f_next_state.dim()))
+            )
+            return dyn.view(n_evals_original, n_parallel).argmin(dim=1)
+
     def _cem_planning(self, z_obs_0, frozen_z_state, num_samples=20, num_iterations=20, initial_actions=None):
         """
         Cross-Entropy Method (CEM) for planning with batched sampling for GPU memory efficiency.
@@ -1504,7 +1517,10 @@ class GRASPPlanner(BasePlanner):
             if self.evaluator is not None and iter_idx % self.eval_every == 0:
                 # Only evaluate the first copy of each original eval (not all parallel copies)
                 if n_parallel > 1:
-                    actions_to_eval = actions.detach().view(n_evals_original, n_parallel, *actions.shape[1:])[:, 0]
+                    _bi = self._best_parallel_indices(
+                        f_next_state_list, z_state_expanded, n_evals_original, n_parallel)
+                    _ap = actions.detach().view(n_evals_original, n_parallel, *actions.shape[1:])
+                    actions_to_eval = _ap[torch.arange(n_evals_original, device=_ap.device), _bi]
                 else:
                     actions_to_eval = actions.detach()
 
@@ -1695,9 +1711,12 @@ class GRASPPlanner(BasePlanner):
         self.exit_step = exit_step
         self.total_measured_time = total_measured_time
 
-        # Return only the first copy of each original eval (not all parallel copies)
+        # Return the best of the parallel copies for each original eval
         if n_parallel > 1:
-            actions_final = actions.detach().view(n_evals_original, n_parallel, *actions.shape[1:])[:, 0]
+            _bi = self._best_parallel_indices(
+                f_next_state_list, z_state_expanded, n_evals_original, n_parallel)
+            _ap = actions.detach().view(n_evals_original, n_parallel, *actions.shape[1:])
+            actions_final = _ap[torch.arange(n_evals_original, device=_ap.device), _bi]
         else:
             actions_final = actions.detach()
 

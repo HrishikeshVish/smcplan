@@ -1,0 +1,119 @@
+# EM planner: SMC E-step + Adam M-step, kept separate (planning/em_smc.py).
+# Derived from fk_pointmaze.yaml -- same env, same buffer/graph, same horizon
+# and step budget, so it is a drop-in A/B against FKSMCPlanner.
+_target_: planning.em_smc.EMSMCPlanner
+horizon: 5
+opt_steps: 150
+eval_every: 1
+
+# --- population and target ---------------------------------------------------
+num_particles: 12
+# Proposal/prior width. q(a|mu) = N(mu, sigma_p^2 I) is a proper density, so
+# beta=0 IS the prior and the population is drawn from it exactly. Plays the
+# role of fk_pointmaze's init_std, which was a patch for clone degeneracy
+# rather than part of a target.
+sigma_p: 1.0
+# Path-integral temperature. "auto" fixes it to the spread of C over the
+# initial prior population (printed at startup), so beta in [0,1] is a usable
+# range without per-env tuning; then frozen.
+alpha: auto
+# Weight on the roadmap cost-to-go inside C. 0.0 = the raw-objective target,
+# which is the MPPI case. Turn this up for the latent-cost variant: read the
+# startup "C: mean/std" line and the per-step "V_sel (pop ...)" to pick a
+# value that puts the two terms on comparable footing.
+lambda_v: 0.0
+# Upper limit of the tempering path. beta_max=1 is right when pi is a posterior
+# to be SAMPLED, and wrong here: with alpha="auto" fixing alpha = std(C), the
+# log-weight spread at beta=1 is exactly 1 nat BY CONSTRUCTION, so the target
+# can never concentrate, the particles stay prior draws around mu, and only mu
+# is ever optimised (measured: ESS pinned at 1.5-3.0 of 3 for all 150 steps on
+# every failing seed). For SMC-as-optimisation the path must run until the
+# target is sharp; the ESS criterion in adapt_beta controls the RATE, so this
+# only has to be large enough not to bind. As beta grows MALA's drift
+# -eps*beta*grad C/alpha dominates its sqrt(2 eps) noise, so the kernel tends
+# to a noisy gradient descent -- it contains FK's behaviour as a limit while
+# staying pi-invariant.
+beta_max: 1.0
+# adaptive | geometric. "adaptive" is the ESS bisection (Del Moral et al.),
+# which at P=3 self-destructs: a collapsed population has no spread in C, so
+# ESS reads a perfect P, beta jumps to beta_max, the acceptance rate goes to 0
+# and the clones can never re-diversify. "geometric" raises beta log-linearly
+# from beta_init to beta_max over opt_steps so the step-size adaptation can
+# follow it.
+beta_schedule: adaptive
+beta_init: 1.0
+# Fixed, NOT annealed: an annealed coefficient would make pi non-stationary in
+# a way the incremental weight does not track (see em_target.py).
+action_reg: 0.1
+action_clamp: 0
+
+# --- E-step: the sampler, and nothing else -----------------------------------
+# mala | rwm | hmc | ula. Ported from blackjax and verified against it in
+# planning/test_mcmc_kernels.py. None of them optimise.
+kernel: ula
+n_kernel_steps: 1
+kernel_step_size: 0.18
+# Nesterov dual averaging to the kernel's optimal-scaling acceptance rate
+# (MALA 0.574, RWM 0.234, HMC 0.651).
+adapt_step_size: true
+# Adapt eps for this many iterations, then freeze at the dual-averaging
+# average. The M-step moves the target every iteration, so unbounded
+# adaptation thrashes.
+kernel_warmup: 30
+target_accept: null
+hmc_leaps: 5          # eps*L ~ pi at preconditioned eps; jittered
+hmc_jitter: true
+# Metric adaptation from the particle population (Buchholz-Chopin-Jacob 2021).
+# none | population. Identity metric is throttled by the stiffest direction.
+precond: none
+precond_floor: 0.05
+precond_ema: 0.7
+# 0.5 = Adam/pSGLD (s ~ v^-0.25, square-root damped); 1.0 = whitening (s ~ v^-0.5)
+precond_power: 0.5
+ess_target_frac: 0.5
+resample_frac: 0.5
+
+# --- M-step: the optimiser, driven by the E-step's weights -------------------
+# both | pathwise | score | none.
+#   pathwise  sum_i w_i grad C(a_i)          -- the world-model gradient (GRASP)
+#   score     -sum_i w_i (a_i - mu)/sigma_p^2 -- exact grad of -log Z; a plain
+#             SGD step of size sigma_p^2 along it alone IS MPPI's weighted mean
+# score | pathwise | both. The two estimate the SAME gradient (score-function
+# vs reparameterised form of grad_mu(-log Z)), so "both" mixes them convexly by
+# pathwise_mix -- it does not add them.
+m_step: score
+m_lr: 0.1
+pathwise_mix: 0.5
+# Gaussian loss smoothing (GRASP's Corollary 1), the device behind
+# gd_reacher's 93%. Legitimate here and only here: the M-step has no accept
+# step for a Monte-Carlo-noisy objective to invalidate. Set to 1 to take the
+# M-step gradient straight from the kernel's cached rollout, for free -- the
+# whole iteration then costs P+1 rollouts instead of P*(1+S)+1.
+m_smooth_samples: 8
+m_smooth_sigma: 1.0
+# Max sequences per M-step rollout. P*S with a live autograd graph OOMs a
+# 16 GB card at P=3,S=8; chunking is exact, it only caps peak memory.
+m_chunk: 8
+# Same ceiling for the kernel's own rollout. Exact (per-row independence);
+# required for populations above ~24 at ~0.5 GB per sequence.
+eval_chunk: 8
+
+# task | cost | mu. "task" is argmin objective over the particles and mu,
+# matching fk_planner's argmin L_dyn while still letting MPPI's nominal
+# sequence win when it is better.
+select: task
+# Early exit on success censors mid-run coverage statistics (successes stop at
+# iteration 0-13, failures run all 150). Set false for measurement runs.
+stop_on_success: true
+
+# --- world model / graph: identical to fk_pointmaze.yaml ---------------------
+replay_buffer_path: /home/hviswan/Documents/grasp/latent_buffers/pointmaze_buffer.pt
+latent_key: proprio
+solver_mode: heat
+rw_steps: 20
+graph_k_neighbors: 64
+use_full_dim: true
+graph_n_nodes: 3800
+use_isomap: false
+
+name: emsmc_pointmaze

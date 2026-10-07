@@ -239,7 +239,7 @@ class PlanWorkspace:
 
         # Have different seeds for each planning instance
         self.eval_seed = [
-            self.cfg_dict["seed"] * n + 1
+            self.cfg_dict["seed"] + n
             for n in range(self.cfg_dict["n_evals"])
         ]
         log.info("eval_seed: %s", self.eval_seed)
@@ -327,8 +327,9 @@ class PlanWorkspace:
         """Instantiate the planner and align its horizon with the goal horizon."""
         # Apply separate planner seed if provided, otherwise use eval seed
         planner_seed = self.cfg_dict.get("planner_seed")
-        if planner_seed is not None:
-            seed(planner_seed)
+        if planner_seed is None:
+            planner_seed = self.cfg_dict["seed"]
+        seed(planner_seed)
 
         self.planner = hydra.utils.instantiate(
             self.cfg_dict["planner"],
@@ -574,9 +575,60 @@ class PlanWorkspace:
             obs_g=self.obs_g,
             actions=actions_init,
         )
-        logs, successes, _, e_states_all = self.evaluator.eval_actions(
+        logs, successes, e_obses_all, e_states_all = self.evaluator.eval_actions(
             actions.detach(), action_len, save_video=self.save_images, filename="output_final"
         )
+
+        # Executed-trajectory dump for the side-by-side ablation renders.
+        # Env-var gated so the default path is byte-for-byte unchanged; nothing
+        # else writes e_states, which is the TRUE env rollout (pointmaze state is
+        # [qpos(2), qvel(2)], so [:, :2] is the position we trace).
+        _traj_dump = os.environ.get("GRASP_TRAJ_DUMP")
+        if _traj_dump:
+            def _np(x):
+                if x is None:
+                    return np.zeros(0)
+                if torch.is_tensor(x):
+                    return x.detach().cpu().numpy()
+                return np.asarray(x)
+            try:
+                # Rendered env frames, only when explicitly asked: 26 frames of
+                # 224x224x3 per run. LeWM cube has no decoder (config.json has no
+                # 'decoder' key), so planning/evaluator.py's video path is
+                # unavailable for it -- these frames are the only way to see a
+                # cube rollout.
+                _frames = {}
+                if os.environ.get("GRASP_TRAJ_DUMP_FRAMES"):
+                    try:
+                        v = e_obses_all["visual"] if isinstance(e_obses_all, dict) else None
+                        if v is not None:
+                            _frames["frames"] = _np(v).astype(np.uint8)
+                        # The GOAL image. Without it a frame strip has no ground
+                        # truth and the reader cannot tell a good rollout from a
+                        # bad one -- the rendered scene alone does not say where
+                        # the target is on Cube or Point maze.
+                        gv = self.obs_g["visual"] if isinstance(self.obs_g, dict) else None
+                        if gv is not None:
+                            g = _np(gv)
+                            if g.dtype != np.uint8:
+                                g = (g * 255).clip(0, 255).astype(np.uint8) if g.max() <= 1.0 \
+                                    else g.clip(0, 255).astype(np.uint8)
+                            _frames["goal_visual"] = g
+                    except Exception as e:
+                        print(f"[traj-dump] frames skipped: {e}")
+                np.savez(
+                    _traj_dump,
+                    **_frames,
+                    e_states=_np(e_states_all),
+                    state_0=_np(self.state_0),
+                    state_g=_np(self.state_g),
+                    actions=_np(actions),
+                    success=float(np.asarray(successes).mean()),
+                    exit_step=int(getattr(self.planner, "exit_step", -1)),
+                )
+                print(f"[traj-dump] wrote {_traj_dump}")
+            except Exception as e:  # never let a dump break a sweep run
+                print(f"[traj-dump] FAILED: {e}")
 
         # Create optimization GIF for ballnav if planner has visualizer
         if (self.save_images and

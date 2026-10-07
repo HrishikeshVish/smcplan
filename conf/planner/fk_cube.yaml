@@ -1,0 +1,46 @@
+_target_: planning.fk_planner.FKSMCPlanner
+horizon: 5
+opt_steps: 300
+eval_every: 1
+
+# Population + AIS/SMC-sampler mechanics. The kernel block below is byte-identical
+# to fk.yaml / fk_pointmaze.yaml / fk_pusht.yaml on purpose: it was tuned on
+# reacher and is held FIXED across environments, so a per-env row differs only in
+# the roadmap graph and the buffer, never in the optimizer.
+num_particles: 32
+num_langevin_steps: 1
+langevin_lr: 0.1
+action_reg: 0.1
+num_smooth_samples: 8
+smooth_sigma: 1.0
+langevin_temp: 0.001
+beta_max: 1.0
+init_std: 1.0
+ess_target_frac: 0.5
+
+action_clamp: 0
+
+# Cube is the LeWM path, like reacher: encode_obs yields a SINGLE 192-D token per
+# frame (not DINO-WM's 196 ViT patch tokens), so particles are cheap in VRAM here
+# and the 3-particle ceiling that constrains pointmaze/pusht does not apply.
+# latent_key: visual for the same reason as reacher -- conf/env/cube.yaml sets
+# proprio_dim: 0, so a proprio readout would be empty.
+#
+# Buffer: built 2026-09-15 by
+#   python build_latent_buffer.py --env lewm_cube --max-episodes 1400
+# 1400 episodes x ~39 transitions ~= 55k nodes, matching the reacher buffer's
+# graph size so heat-solver density is comparable between the two LeWM envs.
+# VERIFY BEFORE TRUSTING ANY V NUMBERS: check dmin in the planner log is small
+# (on-manifold). The reacher buffer had a silent encoding bug that put every
+# query ~161 scaled units from the graph -- see the heat-value-equals-linear-bias
+# memory. pusht's buffer checked out at dmin 0.16-0.43; reacher's broken one did not.
+replay_buffer_path: /home/hviswan/Documents/grasp/latent_buffers/lewm_cube_buffer.pt
+latent_key: visual
+solver_mode: heat
+rw_steps: 20
+graph_k_neighbors: 64
+use_full_dim: true
+graph_n_nodes: 55000
+use_isomap: false
+
+name: fk_cube

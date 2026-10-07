@@ -26,6 +26,30 @@ from omegaconf import OmegaConf
 os.environ.setdefault("DATASET_DIR", "/scratch/gilbreth/hviswan/grasp/data")
 
 
+class FullEpisodeView(torch.utils.data.Dataset):
+    """Serve whole episodes from a trajectory dataset.
+
+    PointMazeDataset.__getitem__ takes explicit (start, end) bounds and
+    defaults them to None, so a plain DataLoader over it raises on
+    range(None, None). This view supplies each episode's real bounds, at the
+    frameskip the world model was trained with, so consecutive latents in the
+    buffer are exactly one world-model step apart.
+    """
+
+    def __init__(self, dset, frameskip, indices=None):
+        self.dset = dset
+        self.frameskip = frameskip
+        self.indices = list(range(len(dset))) if indices is None else list(indices)
+
+    def __len__(self):
+        return len(self.indices)
+
+    def __getitem__(self, i):
+        idx = self.indices[i]
+        T = int(self.dset.seq_lengths[idx])
+        return self.dset.get_frames(idx, 0, T, self.frameskip)
+
+
 def encode_dino_wm_dataset(wm, dset, latent_key, device, max_episodes=8000):
     """Encode a DINO-WM dataset into latent transition pairs."""
     from torch.utils.data import DataLoader
@@ -103,7 +127,7 @@ def encode_lewm_dataset(wm, dset, device, max_episodes=8000):
 
 def main():
     parser = argparse.ArgumentParser(description="Build latent replay buffer for HJB solver")
-    parser.add_argument("--env", required=True, help="Environment: pointmaze, pusht, lewm_reacher, lewm_cube")
+    parser.add_argument("--env", required=True, help="Environment: pointmaze, pusht, wall_single, lewm_reacher, lewm_cube")
     parser.add_argument("--checkpoint-dir", default=None, help="DINO-WM checkpoint dir (ignored for LeWM)")
     parser.add_argument("--ckpt-base-path", default="/scratch/gilbreth/hviswan/grasp/checkpoints", help="LeWM checkpoint base path")
     parser.add_argument("--output-path", default=None, help="Output .pt path (auto-generated if not set)")
@@ -185,6 +209,17 @@ def main():
                 transform=default_transform(img_size=224),
                 normalize_action=True,
             )
+            # states.pth/actions.pth cover every episode, while obses/ may hold
+            # only a subset; encode the episodes whose frames are on disk.
+            obs_dir = Path(dataset_path) / "obses"
+            avail = sorted(
+                i for i in range(len(dset))
+                if (obs_dir / f"episode_{i:03d}.pth").exists()
+            )
+            if len(avail) < len(dset):
+                print(f"WARNING: {len(avail)}/{len(dset)} episodes have frames on "
+                      f"disk; the roadmap is built from those only.")
+            dset = FullEpisodeView(dset, int(model_cfg.get("frameskip", 5)), avail)
         elif env_name == "pusht":
             from dsets.pusht_dset import PushTDataset
             from dsets.img_transforms import default_transform
@@ -194,6 +229,20 @@ def main():
                 transform=default_transform(img_size=224),
                 normalize_action=True,
             )
+        elif env_name in ("wall", "wall_single"):
+            from dsets.wall_dset import WallDataset
+            from dsets.img_transforms import default_transform
+            dset = WallDataset(
+                data_path=dataset_path,
+                transform=default_transform(img_size=224),
+                normalize_action=True,
+            )
+            # Same trap as PointMazeDataset: __getitem__ defaults start/end to
+            # None, so a plain DataLoader raises in range(None, None). Wall
+            # episodes are all the same length (traj_len), so FullEpisodeView
+            # just needs that broadcast over the episodes.
+            dset.seq_lengths = [dset.traj_len] * len(dset)
+            dset = FullEpisodeView(dset, int(model_cfg.get("frameskip", 5)))
         else:
             raise ValueError(f"Unknown DINO-WM env: {env_name}")
 
