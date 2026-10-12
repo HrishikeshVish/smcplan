@@ -1,0 +1,4 @@
+[pusht_fk] ok=2 frames=(1, 26, 224, 224, 3)
+[pusht_gd] ok=3 frames=(1, 26, 224, 224, 3)
+[reacher_fk] ok=2 frames=(1, 51, 224, 224, 3)
+FIG RENDERS DONE

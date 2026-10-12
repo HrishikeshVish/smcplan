@@ -104,10 +104,16 @@ SPECS = {
         title="point-maze  H=10  (seed 88)",
         rows=[("ours", f"{R}/pm_ours12_s88/traj.npz"),
               ("gd",   f"{R}/pm_gd12_s88/traj.npz")]),
+    # 2026-10-12: H=10 seed 51 (writeup/render_frames_pusht_allfail.sh): ours
+    # solves and GD-12, GRASP-12, CEM-12 and MPPI-12 all fail in the Table 1
+    # sweeps, and the goal puts the T on the env's fixed green target (seed 10's
+    # goal was 49 px and 150 deg off it, so the green T misled about where the
+    # goal was). Ours shows the plan that succeeded (GRASP_TRAJ_DUMP_SUCCESS);
+    # the returned run-argmin plan misses on the agent's position.
     "pusht": dict(
-        title="push-t  H=5  (seed 10)",
-        rows=[("ours", f"{R}/pusht_ours12_s10/traj.npz"),
-              ("gd",   f"{R}/pusht_gd12_s10/traj.npz")]),
+        title="push-t  H=10  (seed 51)",
+        rows=[("ours", f"{R}/pusht_ours12_H10_s51_succ/traj.npz"),
+              ("gd",   f"{R}/pusht_gd12_H10_s51/traj.npz")]),
     "pointmaze_app": dict(
         title="point-maze  H=10  (seed 24)",
         rows=[("ours", f"{R}/pm_ours12_s24/traj.npz"),

@@ -1,0 +1,6 @@
+[a_adam] success=1 exit=77 final_dist=24.145197 (67s)
+[b_iaf_base] success=0 exit=150 final_dist=445.90045 (409s)
+[g_noflow_weighted_logdet] success=0 exit=150 final_dist=21.947947 (98s)
+=== LADDER DONE ===
+[h_noflow_unweighted] success=0 exit=150 final_dist=26.362534 (97s)
+=== LADDER DONE ===

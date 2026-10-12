@@ -1,0 +1,4 @@
+[pointmaze H10 s6 aft unweighted] success=0 exit=150
+[pointmaze H10 s23 aft unweighted] success=1 exit=92
+[pusht H10 s23 aft unweighted] success=0 exit=150
+=== DONE ===

@@ -1,0 +1,7 @@
+pointmaze H5: [6, 17, 19, 20]   (strict wins available: 14)
+pointmaze H10: [6, 19, 23]   (strict wins available: 12)
+pointmaze H15: [19, 31, 3]   (strict wins available: 2)
+pusht H5: [10, 20, 34, 45]   (strict wins available: 8)
+pusht H10: [16, 23, 24]   (strict wins available: 11)
+pusht H15: [6, 61, 94]   (strict wins available: 4)
+cube: [17, 24, 26, 30, 39]   (strict wins available: 0)

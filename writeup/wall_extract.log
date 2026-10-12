@@ -1,0 +1,9 @@
+EXTRACT DONE 02:29:57
+55G	data/wall_single
+actions.pth
+door_locations.pth
+obses
+states.pth
+wall_dataset_config.pkl
+wall_locations.pth
+1920

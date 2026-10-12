@@ -1,0 +1,166 @@
+%% ============================================================
+\section{Experiments}
+\label{sec:experiments}
+%% ============================================================
+
+We ask three questions. First, does roadmap-tilted sampling plan better than
+standard trajectory optimisers on the same world model and the same budget
+(\S\ref{sec:exp:planning})? Second, does any advantage survive as the planning
+horizon grows (\S\ref{sec:exp:horizon})? Third, does the roadmap cost-to-go
+contribute anything beyond the $L_2$ planning objective that the optimiser is
+already descending (\S\ref{sec:exp:ablation})?
+
+\subsection{Setup}
+\label{sec:exp:setup}
+
+\paragraph{Environments and world models.}
+We evaluate on five environments spanning two world-model families. Reacher and
+Cube use LeWM/JEPA latents, in which each frame is encoded as a single $192$-d
+token. Point maze, Push-T and Wall use DINO-WM, where a frame becomes $196$ ViT
+patch tokens. The world model is frozen throughout; no component of any planner
+is trained.
+
+\paragraph{Protocol.}
+Unless stated otherwise every planner receives a matched budget of $150$
+optimiser iterations, and CEM is additionally tuned to $150$ world-model
+rollouts ($30$ samples $\times$ $5$ steps) so that it matches gradient descent's
+rollout count rather than its stock $9000$. Each cell reports $100$ seeds, one
+episode per seed. Goals are drawn per environment: \texttt{random\_state} on
+Reacher, Point maze and Wall; from the dataset on Push-T, whose random
+start/goal pairs are frequently unconnectable and floor every planner near
+zero. The goal protocol therefore is not uniform across environments and we
+report it per row.
+
+\paragraph{Horizons.}
+$\mathrm{goal}_H$ counts world-model steps, each covering \texttt{frameskip}$=5$
+environment steps, so $H\in\{5,10,15\}$ corresponds to $25$, $50$ and $75$
+environment steps. We note in \S\ref{sec:exp:limits} that this makes $H{=}15$
+longer than the episode cap on two environments.
+
+\paragraph{Particle budgets are not uniform, and this favours the baselines.}
+On the LeWM environments our sampler runs $8$ particles with $8$ smoothing
+samples. On the DINO-WM environments it runs $3$ particles with smoothing
+disabled, and $2$ at $H{=}15$. This is a hardware limit rather than a tuning
+choice: DINO-WM retains $196$ patch tokens per frame through the rollout for
+autograd, and we measured that $4$ particles exceeds $16$\,GB of VRAM at
+$H{=}10$ and $3$ particles at $H{=}15$. Our method is therefore
+\emph{reduced-budget} exactly where it is compared against baselines that are
+not.
+
+\subsection{Does it plan better?}
+\label{sec:exp:planning}
+
+Table~\ref{tab:planners} reports success rates across the shared grid. Our
+method is strongest on Reacher, where it reaches $100\%$, $92\%$ and $50\%$ at
+$H=5,10,15$ against best-baseline values of $62\%$, $38\%$ and $32\%$ --- a
+margin of $38$, $54$ and $18$ points. On Point maze it leads at the two shorter
+horizons ($75$ vs $54$; $81$ vs $67$) and \emph{loses} at $H{=}15$ ($61$ vs CEM's
+$69$). On Push-T it leads the single available baseline at $H{=}5$ ($68$ vs
+$57$).
+
+Table~\ref{tab:cube} reports OGBench Cube under the evaluation protocol of its
+reference implementation: goals drawn $25$ environment steps ahead in an expert
+episode, $50$ seeds, and success when the block lies within $0.04$\,m of its
+target. Our method leads on both views, $88\%$ over all seeds and $79\%$ on the
+non-trivial subset, against $82/69$ for gradient descent and $76/59$ for the
+reference CEM solver. Paired per seed on the non-trivial subset it wins $3$,
+loses $0$ and ties $26$ against gradient descent: it solves a strict superset,
+rather than trading different seeds. We emphasise two caveats that make this a
+harder comparison than the headline suggests. The gradient-descent baseline is
+our own tuned configuration --- the generic one \emph{diverges} on this
+environment, moving away from the goal --- so the comparison is against a
+strengthened rather than a default baseline. And $42\%$ of goals under this
+protocol are trivial: the block already lies inside the success radius, so the
+goal is satisfied before any planning and every planner scores them. This
+follows from the reference protocol, which samples start indices uniformly with
+no filter on block motion, and it is why we report the non-trivial column.
+
+\subsection{Does it generalise across horizons?}
+\label{sec:exp:horizon}
+
+Only partially, and the pattern differs by environment. On Reacher the advantage
+narrows monotonically with horizon --- $+38$, $+54$, $+18$ points over the best
+baseline --- and absolute performance falls from $100\%$ to $50\%$. On Push-T it
+collapses outright, $68\%\to27\%\to5\%$. On Point maze it is roughly flat
+($75\to81\to61$) but the ranking inverts: we lead at $H\le10$ and trail CEM at
+$H{=}15$. Across the grid, CEM is the planner whose performance is most stable
+in the horizon, and on Wall it \emph{improves} with horizon ($33\to40\to49$)
+while GRASP degrades monotonically ($21\to9\to5$).
+
+We do not claim horizon-robustness. Two confounds prevent a clean reading, and
+both act against us. Our particle budget \emph{shrinks} with horizon on the
+DINO-WM environments ($3$ particles at $H\le10$, $2$ at $H{=}15$) for the memory
+reasons above, so the longest-horizon cells are also the ones where our sampler
+has the least population to select among. And on Reacher and Cube, $H{=}15$
+corresponds to $75$ environment steps against a $50$-step episode cap, so those
+cells plan past the end of the episode. The honest summary is that the method's
+advantage is clearest at short and medium horizons and is not established at
+long ones.
+
+\subsection{Does the roadmap cost-to-go add anything over the $L_2$ objective?}
+\label{sec:exp:ablation}
+
+The tilt potential and the optimiser's objective are different functions of the
+same rollout, so it is reasonable to ask whether the roadmap solve is doing any
+work that the $L_2$ planning loss could not. We test this directly by replacing
+the cost-to-go $V$ in the importance weights with the $L_2$ objective the
+Langevin kernel already descends, leaving every other component untouched.
+
+The comparison is run on Point maze at $H{=}10$ over the $38$ seeds where
+gradient descent fails and our method succeeds. These seeds are chosen because
+gradient descent \emph{is} the $L_2$ objective, so the objective alone provably
+does not solve any of them; our method solves all $38$, giving full headroom to
+fall.
+
+Replacing $V$ with the $L_2$ objective loses $9$ of $38$ seeds ($38/38 \to
+29/38$). Counting failures at the iteration cap, it also converges far more
+slowly: mean $25.6$ versus $47.6$ iterations to first success, median $5$ versus
+$11$, winning $19$ seeds and losing $5$. We report the censored statistic
+because conditioning on seeds both arms solve discards precisely the hard cases
+the ablation is about.
+
+The diagnostics identify the mechanism. The roadmap tilt sustains roughly twice
+the selection pressure of the objective tilt (cumulative selection KL $0.73$ vs
+$0.36$ nats), resamples more often ($1.9$ vs $1.3$), and drives the effective
+sample size \emph{lower} ($1.84$ vs $2.27$ of $3$), i.e.\ it actually
+concentrates mass, whereas the objective leaves the population near-uniform. On
+two seeds the objective tilt is completely inert; the roadmap tilt never is.
+The explanation is structural: the kernel already descends the $L_2$ objective,
+so optimised particles have similar objective values and little spread remains
+to tilt on, while $V$ is a different function of the state and still separates
+particles the objective can no longer distinguish. Consistently, the annealing
+exponent $\beta$ runs \emph{lower} for the roadmap tilt ($0.897$ vs $0.970$):
+the objective arm pushes its exponent higher to compensate and still achieves
+half the selection pressure.
+
+\paragraph{A negative result.}
+This contribution does not transfer to Cube. There the correlation between $V$
+and latent distance is $0.003$, the tilt is near-inert (final ESS $28.6/32$,
+cumulative KL $0.14$), and a four-arm grid confirms the diagnosis: raising
+$\beta_{\max}$ does activate the tilt (KL $0.71$, ESS $19.2$) and changes
+nothing, with $4/5$ non-trivial seeds solved in every arm and the same seed
+failing throughout; a four-fold denser roadmap leaves the off-manifold distance
+unmoved. Our method still leads on Cube (\S\ref{sec:exp:planning}), but it does
+so through the gradient kernel rather than the roadmap, and we do not claim
+otherwise. We conjecture that the LeWM Cube latents encode the arm
+configuration but not the block position --- the quantity the task and its
+success criterion depend on --- which would make a roadmap built in that latent
+space unable to represent the relevant distance.
+
+\subsection{Limitations}
+\label{sec:exp:limits}
+
+\textbf{Missing baselines.} Eight of the nine Push-T baseline cells and all
+Wall cells for our method are unscheduled, so the Push-T results at $H\ge10$ and
+the Wall column stand without a complete comparison.
+\textbf{Horizon versus episode length.} On Reacher and Cube, $H{=}15$ plans $75$
+environment steps against a $50$-step cap; those cells should be read with that
+in mind.
+\textbf{Run-to-run variance.} The planner is not reproducible at fixed seed:
+\texttt{seed} fixes the start/goal draw but not the particle initialisation,
+Langevin noise, or the cost-to-go surrogate fit. Re-running a completed arm
+reproduced $38/38$ outcomes exactly, but on marginal seeds we measured
+disagreement of roughly $3$--$4$ points per $100$-seed cell. Per-seed claims
+should be read accordingly.
+\textbf{Trivial goals on Cube.} $42\%$ of goals are satisfied at $t{=}0$; the
+non-trivial column is the discriminating one.

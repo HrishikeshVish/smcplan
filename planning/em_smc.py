@@ -230,6 +230,10 @@ class EMSMCPlanner(GDPlanner):
         # --- selection ---
         select="task",
         stop_on_success=True,
+        # --- ablations (appendix) ---
+        uniform_weights=False,
+        lambda_v_scale=1.0,
+        v_operator="heat",
         **kwargs,
     ):
         # GDPlanner wants these; the EM planner does not use its sampling or
@@ -240,6 +244,11 @@ class EMSMCPlanner(GDPlanner):
         kwargs.setdefault("var_actions", 0.0)
         kwargs.setdefault("num_samples", 1)
         super().__init__(**kwargs)
+        # Ablation: the operator that orders the roadmap vertices
+        # (MCMollifiedHeat._solve_operator); "heat" is the planner's.
+        assert v_operator in ("heat", "hop", "green", "shortest_path"), v_operator
+        if self.heat_solver is not None:
+            self.heat_solver.v_operator = v_operator
 
         self.num_particles = num_particles
         self.sigma_p = sigma_p
@@ -256,6 +265,11 @@ class EMSMCPlanner(GDPlanner):
         # cost term of the Langevin drift relative to its sqrt(2 eta) noise.
         self.alpha_scale = float(alpha_scale)
         self.lambda_v = lambda_v
+        # Ablation: discard the SMC weights (no resampling, uniform M-step
+        # average); beta is still advanced by the ESS of each increment.
+        self.uniform_weights = bool(uniform_weights)
+        # Multiplier on lambda_v="auto" (sensitivity only; 1 in the paper).
+        self.lambda_v_scale = float(lambda_v_scale)
         self.v_traj = v_traj
         self.v_base = v_base
         self.beta_max = beta_max
@@ -422,9 +436,16 @@ class EMSMCPlanner(GDPlanner):
 
         # Fit the differentiable V surrogate for this goal (same offline-data
         # heat solver as gd.py / fk_planner.py).
+        timing = os.environ.get("GRASP_TIMING") == "1"
+        _sync = (torch.cuda.synchronize if (timing and torch.cuda.is_available())
+                 else (lambda: None))
+        _t_goal = time.perf_counter()
         if self.heat_solver is not None:
             goal_latent = self._get_latent(z_obs_g)[0, 0].detach().cpu().numpy()
             self.heat_solver.solve_for_goal(goal_latent)
+        _sync()
+        _t_goal = time.perf_counter() - _t_goal
+        _t_init = time.perf_counter()
 
         target = ActionSequenceTarget(
             wm=self.wm, objective_fn=self.objective_fn,
@@ -456,7 +477,7 @@ class EMSMCPlanner(GDPlanner):
             # lambda_V = std(L) / std(Vhat). One extra rollout to re-evaluate C
             # (and grad C) with the V term in.
             s_l = float(state.task.std()); s_v = float(state.value.std())
-            target.lambda_v = s_l / max(s_v, 1e-8)
+            target.lambda_v = self.lambda_v_scale * s_l / max(s_v, 1e-8)
             print(f"[EM-SMC] lambda_v=auto -> {target.lambda_v:.4g} "
                   f"(std L {s_l:.4g}, std V {s_v:.4g}, v_traj={target.v_traj})")
             state = target.evaluate(state.position)
@@ -500,6 +521,7 @@ class EMSMCPlanner(GDPlanner):
         # search region became than the one it started in. See bump_weights.
         log_zhat = 0.0
         best_ever_action, best_ever_task = None, math.inf
+        self.success_action = None  # the plan whose evaluation succeeded first
         first_success_step = None
         prev_disp = None
         scale = None
@@ -510,7 +532,10 @@ class EMSMCPlanner(GDPlanner):
         mean_dist = mean_vis_dist = mean_proprio_dist = np.inf
         acc = 1.0
 
+        _t_init = time.perf_counter() - _t_init
+        n_iters_run = 0
         for i in range(self.opt_steps):
+            _sync()
             start = time.perf_counter()
 
             # -- 1. reweight for the previous M-step's move of mu. Exact and
@@ -541,6 +566,8 @@ class EMSMCPlanner(GDPlanner):
                 state = target.recompose(state)
 
             # -- 3. resample on the ESS threshold.
+            if self.uniform_weights:
+                logw = torch.zeros_like(logw)
             ess = ess_of(logw)
             resampled = ess < resample_at
             if resampled:
@@ -638,6 +665,8 @@ class EMSMCPlanner(GDPlanner):
                 prev_disp = disp
 
             # -- 5. M-step: Adam along the SMC-weighted gradient.
+            if self.uniform_weights:
+                logw = torch.zeros_like(logw)
             w = torch.softmax(logw, dim=0)
             if self.m_step != "none":
                 sigma_t = self.m_smooth_sigma * max(
@@ -648,7 +677,9 @@ class EMSMCPlanner(GDPlanner):
                 optimizer.step()
                 target.mu = mu.detach().clone()
 
+            _sync()
             total_measured_time += time.perf_counter() - start
+            n_iters_run += 1
 
             # -- 6. selection. argmin task loss over the particles, and over mu
             #       as well since mu is what MPPI would execute.
@@ -776,6 +807,7 @@ class EMSMCPlanner(GDPlanner):
                 if np.all(successes):
                     if first_success_step is None:
                         first_success_step = i
+                        self.success_action = best_action.detach().clone()
                     if self.stop_on_success:
                         exit_step = i
                         break
@@ -784,6 +816,10 @@ class EMSMCPlanner(GDPlanner):
                           else first_success_step)
         self.first_success_step = first_success_step
         self.total_measured_time = total_measured_time
+        print(f"[Timing] goal_setup={_t_goal:.3f}s init_population={_t_init:.3f}s "
+              f"iters={n_iters_run} loop={total_measured_time:.3f}s "
+              f"per_iter={1e3 * total_measured_time / max(n_iters_run, 1):.2f}ms "
+              f"lambda_v={target.lambda_v:.4g}")
 
         self.log_zhat = log_zhat
         self.softmin_cost = softmin_cost(state.cost, target.alpha)

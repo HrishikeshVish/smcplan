@@ -1,0 +1,43 @@
+[freeze=false s1] OOM -- not recorded
+[freeze=false s6] OOM -- not recorded
+[freeze=false s7] OOM -- not recorded
+[freeze=false s14] success=1
+[freeze=false s20] success=1
+[freeze=false s25] success=0
+[freeze=false s33] success=1
+[freeze=false s38] success=1
+[freeze=false s44] success=1
+[freeze=false s45] success=0
+[freeze=false s54] success=1
+[freeze=false s60] success=1
+[freeze=false s65] success=1
+[freeze=false s68] success=0
+[freeze=false s73] success=1
+[freeze=false s79] success=1
+[freeze=false s84] success=1
+[freeze=false s93] success=1
+[freeze=false s99] success=1
+[freeze=false s100] success=0
+=== ARM DONE freeze=false 12:03 ===
+[freeze=true s1] success=1
+[freeze=true s6] success=1
+[freeze=true s7] success=0
+[freeze=true s14] success=1
+[freeze=true s20] success=1
+[freeze=true s25] success=1
+[freeze=true s33] success=1
+[freeze=true s38] success=1
+[freeze=true s44] success=1
+[freeze=true s45] success=0
+[freeze=true s54] success=1
+[freeze=true s60] success=1
+[freeze=true s65] success=1
+[freeze=true s68] success=0
+[freeze=true s73] success=1
+[freeze=true s79] success=1
+[freeze=true s84] success=1
+[freeze=true s93] success=1
+[freeze=true s99] success=1
+[freeze=true s100] success=0
+=== ARM DONE freeze=true 12:19 ===
+=== FREEZE SWEEP COMPLETE 12:19 ===

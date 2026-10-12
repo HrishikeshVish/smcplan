@@ -1,0 +1,15 @@
+[reacher gd H5 s1] 123s success=0
+=== DONE reacher gd H5 10:52:44 ===
+[reacher grasp H5 s1] 118s success=1
+=== DONE reacher grasp H5 10:54:42 ===
+[reacher cem H5 s1] 101s success=1
+=== DONE reacher cem H5 10:56:23 ===
+=== ENV COMPLETE reacher 10:56:23 ===
+[pointmaze gd H5 s1] 19s success=1
+=== DONE pointmaze gd H5 10:56:42 ===
+[pointmaze grasp H5 s1] 29s success=0
+=== DONE pointmaze grasp H5 10:57:11 ===
+[pointmaze cem H5 s1] 19s success=1
+=== DONE pointmaze cem H5 10:57:30 ===
+=== ENV COMPLETE pointmaze 10:57:30 ===
+=== SWEEP COMPLETE 10:57:30 ===

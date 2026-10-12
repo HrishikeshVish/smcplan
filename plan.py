@@ -508,11 +508,20 @@ class PlanWorkspace:
         observations = []
         env_info = []
 
-        # Check if any trajectory is long enough
+        # Check if any trajectory is long enough. The DMControl/OGBench (LeWM)
+        # datasets store episode lengths in their index, so read them there
+        # rather than loading every episode's pixels (~90 s per trial on the
+        # 99 GB Reacher file); __getitem__ is deterministic, so this changes
+        # nothing downstream.
+        def _traj_len(i):
+            d = self.dset
+            if hasattr(d, "_swm") and hasattr(d, "_ep_range"):
+                return int(d._swm.lengths[d._ep_range[i]])
+            return d[i][0]["visual"].shape[0]
         valid_traj = [
-            self.dset[i][0]["visual"].shape[0]
+            _traj_len(i)
             for i in range(len(self.dset))
-            if self.dset[i][0]["visual"].shape[0] >= traj_len
+            if _traj_len(i) >= traj_len
         ]
         if len(valid_traj) == 0:
             raise ValueError("No trajectory in the dataset is long enough.")
@@ -575,6 +584,12 @@ class PlanWorkspace:
             obs_g=self.obs_g,
             actions=actions_init,
         )
+        # Frame-strip renders: execute the plan whose evaluation succeeded,
+        # which can differ from the returned run-argmin plan (em_smc.py
+        # best_ever_action). Env-var gated; the default path is unchanged.
+        if os.environ.get("GRASP_TRAJ_DUMP_SUCCESS") == "1" and \
+                getattr(self.planner, "success_action", None) is not None:
+            actions = self.planner.success_action
         logs, successes, e_obses_all, e_states_all = self.evaluator.eval_actions(
             actions.detach(), action_len, save_video=self.save_images, filename="output_final"
         )

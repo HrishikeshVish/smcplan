@@ -1,0 +1,11 @@
+[svgd pusht H5 s10] success=1 exit=34
+[svgd pusht H5 s20] success=0 exit=150
+[svgd pusht H5 s34] success=1 exit=11
+[svgd pusht H5 s45] success=1 exit=21
+[svgd pusht H10 s16] success=1 exit=32
+[svgd pusht H10 s24] success=1 exit=140
+[svgd pusht H10 s23] success=0 exit=150
+[svgd pusht H15 s6] success=1 exit=84
+[svgd pusht H15 s61] success=1 exit=34
+[svgd pusht H15 s94] success=0 exit=150
+=== SVGD PUSHT DONE ===

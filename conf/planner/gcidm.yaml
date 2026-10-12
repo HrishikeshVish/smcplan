@@ -1,0 +1,6 @@
+_target_: planning.gcidm.GCIDMPlanner
+# GC-IDM (third_party/GCIDM). Checkpoints <checkpoint_root>_fs{1,5}.pt.
+checkpoint_root: ???
+horizon: 5
+mode: open_loop
+name: gcidm

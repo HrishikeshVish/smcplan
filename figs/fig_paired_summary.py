@@ -28,8 +28,18 @@ ENVS = ["reacher", "pointmaze", "wall", "pusht"]
 # 12 particles for 150 iterations (gds12, grasp12, cem12; ours = fixed JALA-EM,
 # pdefix). The 1-particle / 30x5 arms of the previous version are appendix tables.
 BASE = [("GD", "sweep/%s/gds12_H%d"), ("GRASP", "sweep/%s/grasp12_H%d"),
-        ("CEM", "sweep/%s/cem12_H%d")]
-OURS = "sweep_emsmc/table/%s/pdefix_H%d"
+        ("CEM", "sweep/%s/cem12_H%d"), ("MPPI", "sweep/%s/mppi12_H%d")]
+sys.path.insert(0, "/home/hviswan/Documents/grasp/writeup")
+from equal_particle_stats import arm_dir  # noqa: E402  (`ours` per OURS_PM)
+
+
+class _Ours:
+    """OURS % (env, H) -> the directory of `ours` in that cell."""
+    def __mod__(self, eh):
+        return arm_dir("ours", *eh)
+
+
+OURS = _Ours()
 HS = (5, 10, 15)
 
 
@@ -46,7 +56,7 @@ def outcomes(pat):
 
 
 use_style()
-fig, axes = plt.subplots(1, 3, figsize=(6.9, 1.85))
+fig, axes = plt.subplots(1, len(BASE), figsize=(6.9, 1.85))
 counts = {}
 for ax, (bname, bpat) in zip(axes, BASE):
     w, l, n = [], [], []

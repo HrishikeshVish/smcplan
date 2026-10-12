@@ -1,0 +1,2 @@
+[res300warm steps=300 lr=3e-3 warm=true] L_dyn=0.1064 disp=0.0399 derr=0.0120/0.0386
+[res300lr steps=300 lr=1e-2 warm=true] L_dyn=0.0571 disp=0.0252 derr=0.0114/0.0227

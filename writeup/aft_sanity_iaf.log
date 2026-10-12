@@ -1,0 +1,3 @@
+[pointmaze H5 s6 aft] success=0 exit=150
+[pointmaze H5 s17 aft] success=1 exit=56
+[pointmaze H5 s19 aft] success=1 exit=58

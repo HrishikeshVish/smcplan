@@ -1,0 +1,129 @@
+[rawl2-fail pointmaze HH10 s7] success=1
+[rawl2-fail pointmaze HH10 s11] success=1
+[rawl2-fail pointmaze HH10 s15] success=0
+[rawl2-fail pointmaze HH10 s26] success=0
+[rawl2-fail pointmaze HH10 s31] success=1
+=== CELL DONE pointmaze H10  (5 seeds)  20:22 ===
+[rawl2-fail pusht HH10 s1] success=0
+[rawl2-fail pusht HH10 s2] success=0
+[rawl2-fail pusht HH10 s4] OOM -- not recorded
+[rawl2-fail pusht HH10 s5] OOM -- not recorded
+[rawl2-fail pusht HH10 s6] OOM -- not recorded
+[rawl2-fail pusht HH10 s7] OOM -- not recorded
+=== CELL DONE pointmaze H10  (5 seeds)  20:32 ===
+[rawl2-fail pusht HH10 s4] success=0
+[rawl2-fail pusht HH10 s5] success=0
+[rawl2-fail pusht HH10 s6] success=0
+[rawl2-fail pusht HH10 s7] success=1
+[rawl2-fail pusht HH10 s8] success=0
+[rawl2-fail pusht HH10 s9] success=0
+[rawl2-fail pusht HH10 s10] success=0
+[rawl2-fail pusht HH10 s13] success=0
+[rawl2-fail pusht HH10 s14] success=0
+[rawl2-fail pusht HH10 s15] success=0
+[rawl2-fail pusht HH10 s17] success=0
+[rawl2-fail pusht HH10 s18] success=0
+[rawl2-fail pusht HH10 s20] success=0
+[rawl2-fail pusht HH10 s21] success=0
+[rawl2-fail pusht HH10 s22] success=0
+[rawl2-fail pusht HH10 s25] success=1
+=== CELL DONE pusht H10  (18 seeds)  21:02 ===
+[rawl2-fail wall HH10 s2] success=0
+[rawl2-fail wall HH10 s4] success=0
+[rawl2-fail wall HH10 s6] success=0
+[rawl2-fail wall HH10 s8] success=0
+[rawl2-fail wall HH10 s13] success=0
+[rawl2-fail wall HH10 s16] success=0
+[rawl2-fail wall HH10 s20] success=0
+[rawl2-fail wall HH10 s21] success=0
+[rawl2-fail wall HH10 s25] success=0
+=== CELL DONE wall H10  (9 seeds)  21:11 ===
+[rawl2-fail pointmaze HH5 s15] success=0
+[rawl2-fail pointmaze HH5 s23] success=1
+[rawl2-fail pointmaze HH5 s25] success=0
+[rawl2-fail pointmaze HH5 s26] success=0
+[rawl2-fail pointmaze HH5 s30] success=0
+[rawl2-fail pointmaze HH5 s31] success=0
+=== CELL DONE pointmaze H5  (6 seeds)  21:17 ===
+[rawl2-fail pusht HH5 s2] success=0
+[rawl2-fail pusht HH5 s4] success=1
+[rawl2-fail pusht HH5 s5] success=0
+[rawl2-fail pusht HH5 s8] success=1
+[rawl2-fail pusht HH5 s9] success=0
+[rawl2-fail pusht HH5 s17] success=1
+[rawl2-fail pusht HH5 s18] success=1
+[rawl2-fail pusht HH5 s21] success=0
+=== CELL DONE pusht H5  (8 seeds)  21:23 ===
+[rawl2-fail wall HH5 s1] success=0
+[rawl2-fail wall HH5 s2] success=0
+[rawl2-fail wall HH5 s4] success=0
+[rawl2-fail wall HH5 s7] success=0
+[rawl2-fail wall HH5 s8] success=0
+[rawl2-fail wall HH5 s13] success=0
+[rawl2-fail wall HH5 s16] success=0
+[rawl2-fail wall HH5 s17] success=0
+[rawl2-fail wall HH5 s19] success=0
+[rawl2-fail wall HH5 s22] success=0
+[rawl2-fail wall HH5 s25] success=0
+=== CELL DONE wall H5  (11 seeds)  21:31 ===
+[rawl2-fail cube HH5 s5] success=0
+[rawl2-fail cube HH5 s21] success=0
+[rawl2-fail cube HH5 s27] success=0
+=== CELL DONE cube H5  (3 seeds)  21:42 ===
+[rawl2-fail pointmaze HH15 s2] success=0
+[rawl2-fail pointmaze HH15 s7] success=0
+[rawl2-fail pointmaze HH15 s10] success=0
+[rawl2-fail pointmaze HH15 s11] success=0
+[rawl2-fail pointmaze HH15 s12] success=0
+[rawl2-fail pointmaze HH15 s14] success=0
+[rawl2-fail pointmaze HH15 s15] success=0
+[rawl2-fail pointmaze HH15 s17] success=0
+[rawl2-fail pointmaze HH15 s24] success=0
+[rawl2-fail pointmaze HH15 s26] success=0
+=== CELL DONE pointmaze H15  (10 seeds)  22:03 ===
+[rawl2-fail wall HH15 s1] success=0
+[rawl2-fail wall HH15 s2] success=1
+[rawl2-fail wall HH15 s4] success=0
+[rawl2-fail wall HH15 s5] success=0
+[rawl2-fail wall HH15 s6] success=0
+[rawl2-fail wall HH15 s8] success=0
+[rawl2-fail wall HH15 s9] success=0
+[rawl2-fail wall HH15 s10] success=0
+[rawl2-fail wall HH15 s11] success=0
+[rawl2-fail wall HH15 s14] success=0
+[rawl2-fail wall HH15 s16] success=0
+[rawl2-fail wall HH15 s17] success=0
+[rawl2-fail wall HH15 s19] success=0
+[rawl2-fail wall HH15 s20] success=0
+[rawl2-fail wall HH15 s24] success=0
+=== CELL DONE wall H15  (15 seeds)  22:22 ===
+[rawl2-fail pusht HH15 s1] success=0
+[rawl2-fail pusht HH15 s2] success=0
+[rawl2-fail pusht HH15 s3] success=0
+[rawl2-fail pusht HH15 s4] success=0
+[rawl2-fail pusht HH15 s5] success=0
+[rawl2-fail pusht HH15 s7] OOM -- not recorded
+[rawl2-fail pusht HH15 s8] OOM -- not recorded
+[rawl2-fail pusht HH15 s9] OOM -- not recorded
+[rawl2-fail pusht HH15 s10] OOM -- not recorded
+[rawl2-fail pusht HH15 s11] OOM -- not recorded
+[rawl2-fail pusht HH15 s12] OOM -- not recorded
+[rawl2-fail pusht HH15 s13] OOM -- not recorded
+[rawl2-fail pusht HH15 s14] OOM -- not recorded
+[rawl2-fail pusht HH15 s15] OOM -- not recorded
+[rawl2-fail pusht HH15 s16] OOM -- not recorded
+[rawl2-fail pusht HH15 s17] OOM -- not recorded
+[rawl2-fail pusht HH15 s18] OOM -- not recorded
+[rawl2-fail pusht HH15 s19] OOM -- not recorded
+[rawl2-fail pusht HH15 s20] OOM -- not recorded
+[rawl2-fail pusht HH15 s21] OOM -- not recorded
+[rawl2-fail pusht HH15 s22] OOM -- not recorded
+[rawl2-fail pusht HH15 s23] success=0
+[rawl2-fail pusht HH15 s24] success=0
+[rawl2-fail pusht HH15 s25] success=0
+=== CELL DONE pusht H15  (24 seeds)  22:43 ===
+[rawl2-fail reacher HH15 s4] success=0
+[rawl2-fail reacher HH15 s5] success=1
+[rawl2-fail reacher HH15 s6] success=1
+=== CELL DONE reacher H15  (3 seeds)  22:50 ===
+=== FAIL-STRATUM SWEEP COMPLETE 22:50 ===

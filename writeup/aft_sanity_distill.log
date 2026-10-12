@@ -1,0 +1,8 @@
+[pusht H5 s10 aft] success=1 exit=84
+[pusht H5 s34 aft] success=1 exit=11
+[pusht H5 s45 aft] success=1 exit=9
+[pusht H10 s16 aft] success=1 exit=68
+[pusht H15 s6 aft] success=0 exit=150
+[pusht H15 s61 aft] success=1 exit=70
+[pusht H15 s94 aft] success=0 exit=150
+[cube H5 s17 aft] success=0 exit=150

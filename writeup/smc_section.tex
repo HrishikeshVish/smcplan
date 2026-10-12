@@ -1,0 +1,176 @@
+\subsection{Preliminaries}
+
+Let $\mathcal{Z}\subseteq\mathbb{R}^{z}$ denote the state space of the latents and $\mathcal{A}\subseteq\mathbb{R}^{m}$ the action space, with $\mathcal{U}\coloneqq\mathcal{A}^T$ denoting the space of action sequences $\mathbf{a}=(a_0,\ldots,a_{T-1})$. Given an initial latent state $z_0\in\mathcal{Z}$, a pretrained world model $F_{\theta_{\mathrm{WM}}}:\mathcal{Z}\times\mathcal{A}\rightarrow\mathcal{Z}$ predicts the latent dynamics according to $z_{t+1}=F_{\theta_{\mathrm{WM}}}(z_t,a_t)$, and we denote the resulting rollout by $\mathcal{F}_{\theta_{\mathrm{WM}}}^T(z_0,\mathbf{a})=(z_1,\ldots,z_T)$. We cast planning as probabilistic inference with a cost function. Given $z_0$, a goal state $z_g$, and a cost function  $C(\mathbf{a})\coloneqq C\big(\mathcal{F}^T_{\theta_{\mathrm{WM}}}(z_0,\mathbf{a})\big)$,
+obtained by scoring its latent rollout against the goal, we consider a distribution $\pi$ over action sequences which has a density with respect to the Lebesgue measure on $\mathbb{R}^{mT}$ given by
+\begin{align}\label{eq:planning_target}
+\pi(\mathbf{a}) = \frac{1}{Z}\,q_0(\mathbf{a})\exp\!\Big(-\frac{C(\mathbf{a})}{\alpha}\Big),
+\qquad
+Z = \int_{\mathcal{U}} q_0(\mathbf{a})\exp\!\Big(-\frac{C(\mathbf{a})}{\alpha}\Big)\mathrm{d}\mathbf{a},
+\end{align}
+where $C:\mathcal{U}\rightarrow\mathbb{R}$ is the cost, $\alpha>0$ a temperature
+controlling how sharply the tilt concentrates on low-cost sequences, and $Z$ the
+intractable normalising constant. The proposal $q_0$ acts as the prior over action
+sequences, and $\pi$ reweights it by the cost of the rollout each sequence induces. We formulate planning as sequential Monte Carlo (SMC) over the action-sequence space $\mathcal{U}$; let $\mathcal{B}(\mathcal{U})$ denote the Borel $\sigma$-algebra on $\mathcal{U}$, $q_0(\mathrm{d}\mathbf{a}_0)$ an initial distribution over action sequences, and $\mathsf{K}_k(\mathbf{a}_{k-1},\mathrm{d}\mathbf{a}_k)$ a Markov kernel on $(\mathcal{U},\mathcal{B}(\mathcal{U}))$ defining the transition between successive SMC iterations. SMC forms a family of sampling algorithms based on Feynman-Kac, which describe the change of measure between the target path distribution and the proposal path distribution. The proposal path distribution over $\mathbf{a}_{0:K}$ can be defined as 
+\begin{align}
+Q_{0:K}(\mathrm{d}\mathbf{a}_{0:K})
+\coloneqq
+q_0(\mathrm{d}\mathbf{a}_0)
+\prod_{k=1}^{K}
+\mathsf{K}_k(\mathbf{a}_{k-1},\mathrm{d}\mathbf{a}_k).
+\end{align}
+
+Let $\{\pi_k\}_{k=0}^{K}$ denote a sequence of target distributions on
+$(\mathcal{U},\mathcal{B}(\mathcal{U}))$. The target path distribution is
+\begin{align}
+P_{0:K}(\mathrm{d}\mathbf{a}_{0:K})
+\coloneqq
+\frac{1}{Z_K}
+\pi_0(\mathrm{d}\mathbf{a}_0)
+\prod_{k=1}^{K}
+G_k(\mathbf{a}_{k-1},\mathbf{a}_k)
+\mathsf{K}_k(\mathbf{a}_{k-1},\mathrm{d}\mathbf{a}_k),
+\end{align}
+where $Z_K$ is the normalisation and
+$G_k:\mathcal{U}\times\mathcal{U}\rightarrow\mathbb{R}_{+}$ is the potential. Given a
+backward Markov kernel $\mathsf{L}_{k-1}(\mathbf{a}_k,\mathrm{d}\mathbf{a}_{k-1})$, the
+potential is
+\begin{align}\label{eq:potential_def}
+G_k(\mathbf{a}_{k-1},\mathbf{a}_k)
+\coloneqq
+\frac{\pi_k(\mathbf{a}_k)\,\mathsf{L}_{k-1}(\mathbf{a}_k,\mathbf{a}_{k-1})}
+     {\pi_{k-1}(\mathbf{a}_{k-1})\,\mathsf{K}_k(\mathbf{a}_{k-1},\mathbf{a}_k)},
+\end{align}
+and the importance weight of a particle trajectory is the resulting change of measure,
+\begin{align}\label{eq:smc_weights}
+W_k(\mathbf{a}_{0:k}) \coloneqq \frac{P_{0:k}(\mathbf{a}_{0:k})}{Q_{0:k}(\mathbf{a}_{0:k})} .
+\end{align}
+
+\subsection{Planning as Latent-Space SMC Optimization}
+\label{sec:latent_smc_planning}
+
+We formulate latent space planning via an SMC. Given an initial latent observation $z_0\in\mathcal{Z}$, the pretrained world model
+$F_{\theta_{\mathrm{WM}}}:\mathcal{Z}\times\mathcal{A}\rightarrow\mathcal{Z}$
+defines the latent rollout
+\begin{align}
+z_{t+1}
+&=
+F_{\theta_{\mathrm{WM}}}(z_t,a_t),
+\qquad
+t=0,\ldots,T-1,
+\end{align}
+
+We take the SMC state to be the complete action sequence $\mathbf{a}\in\mathcal{U}$. Each SMC transition therefore maps one candidate action sequence to another, while the fixed world model maps each candidate sequence to its corresponding latent rollout.
+
+\paragraph{Target sequence.}
+Sampling \eqref{eq:planning_target} directly is impractical: the tilt is sharply peaked, so
+almost all of the proposal mass carries negligible weight. We therefore reach it through a
+sequence of intermediate targets that introduce the tilt gradually, indexed by
+$0=\beta_0<\beta_1<\cdots<\beta_K=1$,
+\begin{align}\label{eq:targets}
+\pi_k(\mathbf{a}) = \frac{P_k(\mathbf{a})}{Z_k},
+\qquad
+P_k(\mathbf{a}) \coloneqq q_0(\mathbf{a})\exp\!\Big(-\frac{\beta_k\,C(\mathbf{a})}{\alpha}\Big),
+\qquad
+Z_k = \int_{\mathcal{U}} P_k(\mathbf{a})\,\mathrm{d}\mathbf{a} .
+\end{align}
+The endpoints are the proposal and the target of \eqref{eq:planning_target}: $\beta_0=0$
+removes the tilt, giving $\pi_0=q_0$ and unweighted initial particles, while $\beta_K=1$
+recovers $\pi$.
+
+\paragraph{Choice of $\mathsf{L}_{k-1}$ and the resulting potential.}
+The potential $G_k$ is fixed by the backward kernel, which is ours to choose. Assume
+$\mathsf{K}_k$ leaves $\pi_k$ invariant and take $\mathsf{L}_{k-1}$ to be its
+$\pi_k$-reversal,
+\begin{align}\label{eq:backward}
+\mathsf{L}_{k-1}(\mathbf{a}_k,\mathbf{a}_{k-1})
+\coloneqq
+\frac{\pi_k(\mathbf{a}_{k-1})\,\mathsf{K}_k(\mathbf{a}_{k-1},\mathbf{a}_k)}
+     {\pi_k(\mathbf{a}_k)} .
+\end{align}
+Substituting \eqref{eq:backward} into \eqref{eq:potential_def}, the forward kernel density
+cancels, and $\pi_k=P_k/Z_k$ lets $Z_k$ cancel against itself:
+\begin{align}\label{eq:G_derivation}
+G_k(\mathbf{a}_{k-1},\mathbf{a}_k)
+=
+\frac{P_k(\mathbf{a}_k)\,\mathsf{L}_{k-1}(\mathbf{a}_k,\mathbf{a}_{k-1})}
+     {P_{k-1}(\mathbf{a}_{k-1})\,\mathsf{K}_k(\mathbf{a}_{k-1},\mathbf{a}_k)}
+=
+\frac{P_k(\mathbf{a}_k)}{P_{k-1}(\mathbf{a}_{k-1})}
+\,
+\frac{\pi_k(\mathbf{a}_{k-1})}{\pi_k(\mathbf{a}_k)}
+=
+\frac{P_k(\mathbf{a}_{k-1})}{P_{k-1}(\mathbf{a}_{k-1})} .
+\end{align}
+The proposal $q_0$ cancels with it, so the potential is a difference of costs at
+consecutive indices, evaluated at the \emph{same} particle,
+\begin{align}\label{eq:logG}
+\log G_k(\mathbf{a}_{k-1},\mathbf{a}_k)
+=
+\log P_k(\mathbf{a}_{k-1})-\log P_{k-1}(\mathbf{a}_{k-1})
+=
+-\,\frac{\Delta\beta_k}{\alpha}\,C(\mathbf{a}_{k-1}),
+\qquad
+\Delta\beta_k\coloneqq\beta_k-\beta_{k-1} .
+\end{align}
+
+\paragraph{Weights and resampling.}
+Let $\{(\mathbf{a}_k^{(i)}, W_k^{(i)})\}_{i=1}^N$ denote weighted particles at time $k$. We first sample $\mathbf{a}_0^{(i)} \sim q_0$ for $i = 1, \ldots, N$ and set $W_0^{(i)} = 1$ when $q_0 = \pi_0$. For $k \geq 1$, propagate $\bar{\mathbf{a}}_k^{(i)} \sim \mathsf{K}_k (\mathbf{a}_{k-1}^{(i)}, \cdot )$,
+for every $i = 1, \ldots, N$ and update the unnormalised weights using \eqref{eq:smc_weight_update},
+\begin{align}\label{eq:smc_weight_update}
+W_k^{(i)} = W_{k-1}^{(i)} \, G_k\!\left(\mathbf{a}_{k-1}^{(i)}, \bar{\mathbf{a}}_k^{(i)}\right).
+\end{align}
+
+Two properties of \eqref{eq:logG} govern the implementation. First, $G_k$ is independent of
+$\bar{\mathbf{a}}_k$: the weight update \eqref{eq:smc_weight_update} is a function of the
+pre-move particle alone, so proposing and reweighting commute and the cost of a proposal
+never has to be evaluated to weight it. Second, the kernel density
+$\mathsf{K}_k$ does not appear in \eqref{eq:logG}, so the mutation may be specified as a
+procedure rather than as a tractable density --- which is what permits the kernel of
+\S\ref{sec:kernel}. The cost-to-go enters only through $\Delta\beta_k$, so a particle is
+promoted for its cost-to-go relative to the rest of the population at the index just
+crossed, not for its absolute value of $C$.
+
+In general, the product of incremental weights in \eqref{eq:smc_weight_update} can lead to weight degeneracy, where only a few particles have significant weights. To mitigate this, resampling is typically employed. For this, we define the effective sample size
+\begin{align}\label{eq:ess}
+\text{ESS}_k := \frac{\left(\sum_{i=1}^N W_k^{(i)}\right)^2}{\sum_{i=1}^N \left(W_k^{(i)}\right)^2}
+= \frac{1}{\sum_{i=1}^N \left(w_k^{(i)}\right)^2}.    
+\end{align}
+where,  $w_k^{(i)} = W_k^{(i)} / \sum_{j=1}^N W_k^{(j)}$ denotes the normalized weights. 
+If $\text{ESS}_k$ falls below a threshold (e.g., $\tau_N$ for $\tau \in (0,1)$), we resample the particles according to $\{W_k^{(i)}\}_{i=1}^N$ and reset weights to $1/N$.
+
+\paragraph{Adaptive schedule.}
+A schedule fixed in advance either tilts too weakly to reorder the population or collapses
+it in a single step. We therefore choose $\beta_k$ online as the largest value in
+$[\beta_{k-1},1]$ for which $\text{ESS}_k\geq\tau N$, located by bisection on
+\eqref{eq:ess}. The schedule advances as far as the current population can afford, and
+resampling is triggered by the ESS threshold rather than on a fixed interval.
+
+\begin{algorithm}[t]
+\caption{Latent-space planning as an SMC sampler}
+\label{alg:smc}
+\begin{algorithmic}[1]
+\Require latent $z_0$, world model $F_{\theta_{\mathrm{WM}}}$, cost $C$,
+         planning objective $\mathcal{L}$, particles $N$, iterations $K$,
+         temperature $\alpha$, ESS fraction $\tau$
+\State $\mathbf{a}_0^{(i)}\sim q_0$, \; $W_0^{(i)}\leftarrow 1$ \quad for $i=1,\ldots,N$;
+       \; $\beta_0\leftarrow 0$
+\For{$k=1,\ldots,K$}
+  \State $\bar{\mathbf{a}}_k^{(i)}\sim\mathsf{K}_k\big(\mathbf{a}_{k-1}^{(i)},\cdot\big)$
+         \Comment{propose; $\pi_k$-invariant}
+  \State $C^{(i)}\leftarrow C\big(\mathcal{F}^T_{\theta_{\mathrm{WM}}}(z_0,\mathbf{a}_{k-1}^{(i)})\big)$
+         \Comment{potential uses the pre-move particle}
+  \State $\beta_k\leftarrow\max\big\{\beta\in[\beta_{k-1},1]:
+         \text{ESS}\big(\log W_{k-1}-(\beta-\beta_{k-1})C/\alpha\big)\geq\tau N\big\}$
+         \Comment{bisection}
+  \State $\log W_k^{(i)}\leftarrow\log W_{k-1}^{(i)}-(\Delta\beta_k/\alpha)\,C^{(i)}$
+         \Comment{potential \eqref{eq:logG}}
+  \If{$\text{ESS}_k<\tau N$}
+    \State draw ancestors $\{A^{(i)}\}$ by systematic resampling from $\{W_k^{(i)}\}$
+    \State $\bar{\mathbf{a}}_k^{(i)}\leftarrow\bar{\mathbf{a}}_k^{(A^{(i)})}$, \;
+           $W_k^{(i)}\leftarrow 1/N$
+  \EndIf
+  \State $\mathbf{a}_k^{(i)}\leftarrow\bar{\mathbf{a}}_k^{(i)}$
+\EndFor
+\State \Return $\mathbf{a}^\star=\arg\min_{i}\;\mathcal{L}\big(\mathbf{a}_K^{(i)}\big)$
+\end{algorithmic}
+\end{algorithm}

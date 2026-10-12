@@ -304,6 +304,8 @@ class MCMollifiedHeat:
                 v = self.P_trans @ v
             v = np.maximum(v, 1e-300)
             V_raw = -np.log(v)
+        elif getattr(self, 'v_operator', 'heat') != 'heat':
+            V_raw = self._solve_operator(self.v_operator)
         else:
             # Heat equation: implicit Euler on unnormalized Laplacian
             h2 = self.sigma_perturb ** 2
@@ -388,6 +390,8 @@ class MCMollifiedHeat:
         euclid_dists = np.linalg.norm(self.z_buffer_np - self.z_buffer_np[self.goal_idx], axis=1)
         corr, pval = spearmanr(V_graph_np, euclid_dists)
         solver_tag = f"RW t={self.rw_steps}" if self.solver_mode == 'rw_diffusion' else "Heat CG"
+        if getattr(self, 'v_operator', 'heat') != 'heat':
+            solver_tag = f"Operator {self.v_operator}"
         print(f"[{solver_tag}] Solve: {t_solve:.2f}s | V: [{V_graph_np.min():.2f}, {V_graph_np.max():.2f}] "
               f"mean={V_graph_np.mean():.2f} std={V_graph_np.std():.2f} | "
               f"Spearman={corr:.4f}")
@@ -432,10 +436,83 @@ class MCMollifiedHeat:
         for p in self.v_surrogate.parameters():
             p.requires_grad = False
 
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
         t_surr = _time.perf_counter() - t0
         print(f"[Surrogate] Fit: {t_surr:.2f}s | final MSE={loss.item():.4f}")
 
         return self.V_graph
+
+    def _solve_operator(self, op):
+        """Cost-to-go ordering on the roadmap by an operator other than the
+        heat step (I + tL)u = e_g, for the appendix comparison:
+
+          'hop'           hop count to the goal (BFS): log u / log t tends to
+                          it as t -> 0 (Crane et al., Lemma 1). The ordering of
+                          u refines it, breaking ties within a hop shell by the
+                          weighted number of shortest-hop paths; the hop count
+                          leaves them tied (about ten levels on Point maze)
+          'green'         the Green's function of L, L phi = e_g - 1/|C| on the
+                          goal's component C: the ordering as t -> infinity,
+                          where (I + tL)^-1 e_g = 1/|C| + L^+ e_g / t + O(1/t^2)
+          'shortest_path' Dijkstra distance to the goal, each edge as long as
+                          the distance |z_i - z_j| between its vertices (the
+                          k-NN query distance |z'_i - z_j| is ~0 along data
+                          trajectories, where z_j is the successor of z_i)
+
+        All use the edges of the heat step's roadmap (W_sym > 0). Only the
+        ordering matters, as V_raw is rank-transformed in solve_for_goal.
+        Vertices outside the goal's component come last, as with the heat step
+        (u = 0 there).
+        """
+        from scipy.sparse.csgraph import connected_components
+        N = self.L_sym.shape[0]
+        g = int(self.goal_idx)
+        if op in ('hop', 'shortest_path'):
+            K = self.knn_indices.shape[1]
+            rows = np.repeat(np.arange(N), K)
+            keep = self.knn_weights.reshape(-1) > 0
+            rows, cols = rows[keep], self.knn_indices.reshape(-1)[keep]
+            Z = self.z_buffer_np.astype(np.float64)
+            length = np.linalg.norm(Z[rows] - Z[cols], axis=1)
+            G = sp.csr_matrix((length + 1e-12, (rows, cols)), shape=(N, N))
+            G.setdiag(0)
+            G.eliminate_zeros()
+            # undirected: an edge built in either direction can be traversed
+            return dijkstra(G, directed=False, indices=g, unweighted=(op == 'hop'))
+        if op == 'green':
+            L = self.L_sym.tocsr()
+            W = -L
+            W.setdiag(0)
+            W.eliminate_zeros()
+            _, lab = connected_components(W, directed=False)
+            C = np.flatnonzero(lab == lab[g])
+            V_raw = np.full(N, np.inf)
+            if len(C) < 2:
+                V_raw[g] = 0.0
+                return V_raw
+            gc = int(np.searchsorted(C, g))
+            b = np.full(len(C), -1.0 / len(C))
+            b[gc] += 1.0
+            # unique up to a constant: ground one vertex other than the goal
+            r = 0 if gc != 0 else 1
+            red = np.flatnonzero(np.arange(len(C)) != r)
+            A = L[C][:, C][red][:, red].tocsr()
+            phi = np.zeros(len(C))
+            # grounded Laplacian of a connected component: SPD, positive
+            # diagonal. CG gives spsolve's ordering in ~1 s at 55k vertices
+            # (spsolve: 100-240 s from fill-in)
+            x, info = spla.cg(A, b[red], rtol=1e-10, maxiter=50000,
+                              M=sp.diags(1.0 / A.diagonal()))
+            if info != 0:
+                print(f"[Operator green] CG exited with code {info}; using spsolve")
+                x = spla.spsolve(A.tocsc(), b[red])
+            phi[red] = x
+            res = np.abs(L[C][:, C] @ phi - b).max()
+            print(f"[Operator green] |C|={len(C)}/{N} max residual={res:.2e}")
+            V_raw[C] = -phi
+            return V_raw
+        raise ValueError(f"unknown v_operator {op!r}")
 
     # ------------------------------------------------------------------
     # Heat method (Crane, Weischedel & Wardetzky, CACM 2017), steps II/III.
@@ -910,7 +987,9 @@ class GDPlanner(BasePlanner):
             )
 
         print(f"Loading replay buffer from {replay_buffer_path}...")
+        _t_load = time.perf_counter()
         z_buffer_np, z_next_gt_np, pca_info = _load_replay_buffer(replay_buffer_path, self.device)
+        _t_load = time.perf_counter() - _t_load
         self.pca_info = pca_info
         if pca_info is not None:
             print(f"  PCA projection enabled: {pca_info['mean'].shape[0]} -> {pca_info['components'].shape[0]} dims")
@@ -934,6 +1013,7 @@ class GDPlanner(BasePlanner):
         self.heat_solver.heat_c = float(heat_c)
         self.heat_solver.surrogate_steps = int(surrogate_steps)
         print(f"Compiling Latent Environment Graph (solver={self.solver_mode})...")
+        _t_build = time.perf_counter()
         self.heat_solver.compile_environment(
             z_buffer=graph_z_buffer,
             z_predicted_next=graph_z_next,
@@ -944,6 +1024,10 @@ class GDPlanner(BasePlanner):
             solver_mode=self.solver_mode,
             rw_steps=self.rw_steps,
         )
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        _t_build = time.perf_counter() - _t_build
+        print(f"[Timing] buffer_load={_t_load:.3f}s roadmap_build={_t_build:.3f}s")
         print("Graph built. Ready for planning.")
 
     def _get_latent(self, z_obses):

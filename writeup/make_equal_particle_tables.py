@@ -1,7 +1,7 @@
 """Tables and text numbers for the equal-particle planner comparison. 2026-10-07.
 
 Writes, into OUT_DIR (default: this directory):
-  table1_iclr.tex          main Table 1 (tab:planners): GD, GRASP, CEM and ours,
+  table1_iclr.tex          main Table 1 (tab:planners): GD, GRASP, CEM, MPPI and ours,
                            every planner with 12 particles and 150 iterations;
                            success rate with mean iterations to success
   table_abl_gd_grasp.tex   appendix (tab:abl-1particle): GD and GRASP with a
@@ -31,7 +31,9 @@ from equal_particle_stats import (ROOT, ENVS, HS, outcomes,  # noqa: E402
                                   cube_nontrivial, wilson, paired)
 
 OUT_DIR = os.environ.get("OUT_DIR", os.path.dirname(os.path.abspath(__file__)))
-MAIN = [("GD", "gds12"), ("GRASP", "grasp12"), ("CEM", "cem12"), ("Ours", "ours")]
+MAIN = [("GD", "gds12"), ("GRASP", "grasp12"), ("CEM", "cem12"), ("MPPI", "mppi12"),
+        ("Ours", "ours")]
+BASELINES = ["gds12", "grasp12", "cem12", "mppi12"]   # equal-particle baselines
 CELLS = [(e, H) for _, e in ENVS for H in HS]
 
 
@@ -68,7 +70,7 @@ def success_rows(rows, stats):
 
 
 def main():
-    arms = ["ours", "gds12", "grasp12", "cem12", "gd", "grasp", "cem"]
+    arms = ["ours"] + BASELINES + ["gd", "grasp", "cem"]
     stats = {a: {c: summary(a, *c) for c in CELLS} for a in arms}
     cube = {a: summary(a, "cube") for a in arms}
     nt = cube_nontrivial()
@@ -84,10 +86,10 @@ def main():
         nums["cube"][a] = dict(all=c["succ"], nontrivial=100.0 * okn / len(nt),
                                iters=c["iters"], n_nontrivial=len(nt))
         nums["avg"][a] = float(np.mean([stats[a][c]["succ"] for c in CELLS]))
-    for a in ["gds12", "grasp12", "cem12", "gd", "grasp", "cem"]:
+    for a in BASELINES + ["gd", "grasp", "cem"]:
         nums["avg"][f"gain_vs_{a}"] = nums["avg"]["ours"] - nums["avg"][a]
     # paired seeds, ours vs each equal-particle baseline
-    for a in ["gds12", "grasp12", "cem12"]:
+    for a in BASELINES:
         tot_w = tot_l = 0
         for (e, H) in CELLS:
             o, x = outcomes("ours", e, H), outcomes(a, e, H)
@@ -107,7 +109,7 @@ def main():
          r"% Requires: \usepackage{booktabs}, \usepackage{xcolor}.",
          r"\definecolor{bestpurple}{HTML}{5B2C87}",
          r"\begin{table}[t]",
-         r"  \caption{Planning success rate (\%) with the mean number of iterations to success in parentheses, over $100$ seeds per cell. Every planner holds $12$ particles and runs $150$ iterations (\Cref{sec:experiments}). Iteration counts average over successful seeds only. Best success rate per column in bold; $95\%$ intervals and paired tests are in \Cref{tab:ci}.}",
+         r"  \caption{Planning success rate (\%) at horizons $H\in\{5,10,15\}$, with the mean number of iterations to success in parentheses, over $100$ seeds per setting; Cube is reported in \Cref{sec:exp:planning}. Every planner holds $12$ particles, and a trial succeeds if the plan of one of its first $150$ iterations succeeds in the simulator (\Cref{sec:experiments}). Ours is our planner with the PDE cost. Iteration counts average over successful seeds only. Best success rate per column in bold; $95\%$ intervals and paired tests are in \Cref{tab:ci}.}",
          r"  \label{tab:planners}",
          r"  \centering",
          r"  \setlength{\tabcolsep}{7pt}",
@@ -180,7 +182,7 @@ def main():
     best_of = {}
     for (e, H) in COLS:
         get = (lambda a: cube[a]) if e == "cube" else (lambda a, c=(e, H): stats[a][c])
-        b = max(["gds12", "grasp12", "cem12"], key=lambda a: get(a)["succ"])
+        b = max(BASELINES, key=lambda a: get(a)["succ"])
         oo, ob = outcomes("ours", e, H), outcomes(b, e, H)
         w, l, pv = paired(oo, ob)
         best_of[(e, H)] = b

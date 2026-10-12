@@ -1,0 +1,14 @@
+cell,env,H,roadmap,l2,n_success_stratum,n_fail_stratum,fail_seeds_needed,status
+cube_H5,cube,5,88.0,84.0000,22,3,3,complete
+pointmaze_H5,pointmaze,5,75.0,72.0000,51,6,6,complete
+pointmaze_H10,pointmaze,10,81.0,56.0000,53,5,5,complete
+pointmaze_H15,pointmaze,15,61.0,44.0000,51,10,10,complete
+pusht_H5,pusht,5,68.0,84.0000,34,8,8,complete
+pusht_H10,pusht,10,27.0,12.0000,24,18,18,complete
+pusht_H15,pusht,15,5.0,0.0000,4,8,24,partial (8/24 fail seeds)
+reacher_H5,reacher,5,100.0,100.0000,27,0,0,complete
+reacher_H10,reacher,10,92.0,84.0000,25,2,2,complete
+reacher_H15,reacher,15,50.0,40.0000,15,13,13,complete
+wall_H5,wall,5,56.0,56.0000,25,11,11,complete
+wall_H10,wall,10,64.0,64.0000,36,9,9,complete
+wall_H15,wall,15,41.0,36.0000,30,15,15,complete

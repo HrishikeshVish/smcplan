@@ -1,0 +1,4 @@
+[adam] rc=0 success=2 exit=0 acc= err=GLFWError: (65550) b'X11: Failed to open display :2'
+[sgld] rc=0 success=2 exit=0 acc=acc=1.000 err=GLFWError: (65550) b'X11: Failed to open display :2'
+[mala] rc=0 success=0 exit=150 acc=acc=0.000 err=GLFWError: (65550) b'X11: Failed to open display :2'
+KERNEL TEST DONE

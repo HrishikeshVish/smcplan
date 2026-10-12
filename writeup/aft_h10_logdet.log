@@ -1,0 +1,4 @@
+[pointmaze H10 s6 aft logdet1e-4] success=0 exit=150
+[pointmaze H10 s23 aft logdet1e-4] success=0 exit=150
+[pusht H10 s23 aft logdet1e-4] success=0 exit=150
+=== DONE ===

@@ -1,0 +1,29 @@
+[tune base s4] 140s ok=1 cumKL=0.12 nats final ESS=29.4/32 dmin=7.5611
+[tune base s5] 250s ok=0 cumKL=0.13 nats final ESS=29.8/32 dmin=7.4032
+[tune base s7] 138s ok=1 cumKL=0.51 nats final ESS=24.0/32 dmin=9.1177
+[tune base s8] 122s ok=1 cumKL=0.02 nats final ESS=27.3/32 dmin=3.4075
+[tune base s9] 118s ok=1 cumKL=0.04 nats final ESS=30.2/32 dmin=8.3830
+[tune base s10] 115s ok=1 cumKL=0.02 nats final ESS=30.8/32 dmin=3.6028
+=== DONE tune base 13:46:27 ===
+[tune beta s4] 115s ok=1 cumKL=0.67 nats final ESS=26.7/32 dmin=7.3493
+[tune beta s5] 235s ok=0 cumKL=0.67 nats final ESS=20.6/32 dmin=7.3675
+[tune beta s7] 127s ok=1 cumKL=1.84 nats final ESS=16.0/32 dmin=8.2206
+[tune beta s8] 124s ok=1 cumKL=0.24 nats final ESS=22.1/32 dmin=3.6236
+[tune beta s9] 121s ok=1 cumKL=0.34 nats final ESS=13.9/32 dmin=6.8239
+[tune beta s10] 122s ok=1 cumKL=0.50 nats final ESS=16.0/32 dmin=3.6028
+=== DONE tune beta 14:00:31 ===
+[tune rw s4] 122s ok=1 cumKL=0.19 nats final ESS=25.3/32 dmin=7.6631
+[tune rw s5] 221s ok=0 cumKL=0.19 nats final ESS=9.7/32 dmin=7.4136
+[tune rw s7] 131s ok=1 cumKL=0.38 nats final ESS=16.0/32 dmin=6.7632
+[tune rw s8] 122s ok=1 cumKL=0.02 nats final ESS=31.8/32 dmin=3.4225
+[tune rw s9] 126s ok=1 cumKL=0.14 nats final ESS=28.2/32 dmin=7.3453
+[tune rw s10] 114s ok=1 cumKL=0.03 nats final ESS=30.3/32 dmin=3.6028
+=== DONE tune rw 14:14:27 ===
+[tune dense s4] 123s ok=1 cumKL=0.21 nats final ESS=28.1/32 dmin=7.2451
+[tune dense s5] 221s ok=0 cumKL=0.08 nats final ESS=30.4/32 dmin=7.3926
+[tune dense s7] 130s ok=1 cumKL=0.50 nats final ESS=16.0/32 dmin=8.6812
+[tune dense s8] 129s ok=1 cumKL=0.02 nats final ESS=25.3/32 dmin=3.3248
+[tune dense s9] 121s ok=1 cumKL=0.04 nats final ESS=30.1/32 dmin=8.1828
+[tune dense s10] 130s ok=1 cumKL=0.02 nats final ESS=31.1/32 dmin=3.1591
+=== DONE tune dense 14:28:41 ===
+=== FK CUBE TUNE COMPLETE 14:28:41 ===

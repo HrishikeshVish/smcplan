@@ -1,0 +1,8 @@
+[pde pointmaze s20] calls=1 ok=2
+[l2 pointmaze s20] calls=1 ok=2
+[pde pointmaze s38] calls=1 ok=2
+[pde pointmaze s60] calls=1 ok=2
+[l2 pointmaze s60] calls=1 ok=2
+[pde pointmaze s79] calls=1 ok=2
+[l2 pointmaze s79] calls=1 ok=2
+=== FK DUMPS DONE ===

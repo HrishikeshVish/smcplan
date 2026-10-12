@@ -1,0 +1,17 @@
+[pointmaze H5 s6 aft] success=1 exit=111
+[pointmaze H5 s17 aft] success=1 exit=0
+[pointmaze H5 s19 aft] success=1 exit=0
+[pointmaze H5 s20 aft] success=1 exit=110
+[pointmaze H10 s6 aft] success=1 exit=14
+[pointmaze H10 s19 aft] success=1 exit=7
+[pointmaze H10 s23 aft] success=1 exit=8
+[pointmaze H15 s19 aft] success=1 exit=24
+[pointmaze H15 s31 aft] success=1 exit=48
+[pointmaze H15 s3 aft] success=1 exit=29
+[pusht H5 s10 aft] success=1 exit=124
+[pusht H5 s20 aft] success=1 exit=3
+[pusht H5 s34 aft] success=1 exit=2
+[pusht H5 s45 aft] success=1 exit=136
+[pusht H10 s16 aft] success=1 exit=32
+[pusht H10 s23 aft] success=0 exit=150
+[pusht H10 s24 aft] success=0 (stopped by request at step 102, unsolved)

@@ -1,0 +1,13 @@
+_target_: planning.mppi.MPPIPlanner
+# Defaults of stable_worldmodel.solver.mppi.MPPISolver (LeWM's planning
+# library); the paper's equal-particle protocol overrides num_samples=12 and
+# opt_steps=150. With topk >= num_samples every sample is weighted.
+horizon: 5
+num_samples: 300
+topk: 30
+temperature: 0.5
+var_scale: 1
+opt_steps: 30
+eval_every: 1
+
+name: mppi

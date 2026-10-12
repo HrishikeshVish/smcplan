@@ -9,7 +9,8 @@ gets there.
 
 2026-10-07: the arms are the EQUAL-PARTICLE comparison of Table 1 -- every
 planner holds 12 particles for 150 iterations (GD-12 = gds12, GRASP-12 =
-grasp12, CEM-12 = cem12, ours = the fixed JALA-EM arm pdefix). Iterations are
+grasp12, CEM-12 = cem12, MPPI-12 = mppi12 (2026-11), ours = `ours` of
+writeup/equal_particle_stats.py, pdefix unless OURS_PM=score). Iterations are
 counted as in writeup/equal_particle_stats.py: 1 + the index of the first
 successful evaluation, every planner evaluating once per iteration after its
 update. The 1-particle / 30x5 arms of the previous version are appendix tables.
@@ -47,6 +48,7 @@ SUC = re.compile(r"'success': array\(\[\s*(True|False)")
 ARMS = [("GD",    "gds12",   GREY_DARK, (0, (5, 2)),       1.9),
         ("GRASP", "grasp12", GREY_DARK, (0, (1, 1.8)),     1.9),
         ("CEM",   "cem12",   INK,       (0, (3, 1, 1, 1)), 1.9),
+        ("MPPI",  "mppi12",  GREY,      (0, (7, 1.6)),     2.2),
         ("Ours",  "ours",    PINK_DARK, "solid",           3.1)]
 
 # (label, env key, horizon). Cube exists at H=5 only, under its own protocol.
@@ -56,15 +58,12 @@ CELLS = [(f"{t} $H{{=}}{H}$", e, H) for t, e in
 CELLS.append(("Cube $H{=}5$", "cube", 5))
 
 
+sys.path.insert(0, os.path.join(ROOT, "writeup"))
+from equal_particle_stats import arm_dir  # noqa: E402  (`ours` per OURS_PM)
+
+
 def pattern(arm_key, env, H):
-    if env == "cube":
-        return {"gds12": "sweep_cube_leflow/gds12",
-                "grasp12": "sweep_cube_leflow/grasp12",
-                "cem12": "sweep_cube_leflow/cem12",
-                "ours": "sweep_cube_leflow/pdefix"}[arm_key]
-    if arm_key == "ours":
-        return f"sweep_emsmc/table/{env}/pdefix_H{H}"
-    return f"sweep/{env}/{arm_key}_H{H}"
+    return arm_dir(arm_key, env, H)
 
 
 def first_success(log):
@@ -128,7 +127,8 @@ for label, env, H in CELLS:
     rounded_frame(fig, 0.012, 0.015, 0.976, 0.97, lw=1.1, r=0.035)
     save(fig, f"fig_success_{env}_h{H}")
     plt.close(fig)
-    margin = (ends[3] - max(e for e in ends[:3] if e is not None)) if ends[3] is not None else None
+    # ours is the last arm; margin over the strongest baseline at iteration 150
+    margin = (ends[-1] - max(e for e in ends[:-1] if e is not None)) if ends[-1] is not None else None
     summary[(env, H)] = (ends, margin)
     print(f"{label:22s} " + "/".join("--" if e is None else f"{e:.0f}" for e in ends)
           + f"   margin={margin:+.0f}")
@@ -140,5 +140,5 @@ figL, axL = plt.subplots(figsize=(6.2, 0.42))
 for name, key, colour, dash, lw in ARMS:
     axL.plot([], [], color=colour, linestyle=dash, linewidth=lw, label=name)
 axL.axis("off")
-axL.legend(frameon=False, fontsize=14, ncol=4, loc="center", handlelength=3.0)
+axL.legend(frameon=False, fontsize=14, ncol=len(ARMS), loc="center", handlelength=3.0)
 save(figL, "fig_success_legend")

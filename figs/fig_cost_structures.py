@@ -1,18 +1,31 @@
-"""Improvement from each cost structure, over the same SMC planner. 2026-10-07.
+"""Improvement from each cost structure, over the same SMC planner.
 
 Both arms run the identical planner -- JALA-EM (Alg. 1: ULA move with Jarzynski
-weights, 12 particles, adaptive beta <= 1, the score-function M-step of
-Eq. (mstep), 150 iterations) on the same 100 seeds per cell -- and differ ONLY in
-the cost that defines the target:
+weights, 12 particles, adaptive beta <= 1, 150 iterations) on the same 100 seeds
+per cell -- and differ ONLY in the cost that defines the target. The M-step is
+chosen on the command line (2026-10-11):
 
-  L2   sweep_emsmc/table/<env>/em_H<H>   lambda_v = 0
-  PDE  sweep_emsmc/table/<env>/pde_H<H>  calibrated roadmap cost-to-go
-                                          (writeup/run_emsmc_pde.sh)
+  pathwise (default; Alg. 1 and tab:planners, the paper's figure)
+    L2   sweep_emsmc/table/<env>/l2fix_H<H>   lambda_v = 0
+    PDE  sweep_emsmc/table/<env>/pdefix_H<H>  calibrated roadmap cost-to-go
+                                              (writeup/run_emsmc_final.sh)
+  score (Eq. mstep; the 2026-10-07 figure, saved with suffix _score)
+    L2   sweep_emsmc/table/<env>/em_H<H>
+    PDE  sweep_emsmc/table/<env>/pde_H<H>     (writeup/run_emsmc_pde.sh)
 
-This replaces the earlier version, which drew both bars from writeup/composed.csv
-(writeup/compose_all.py), a 25-seed composition that kept every L2 failure in the
-roadmap-success stratum and so overstated the PDE gain. Cube is omitted: it has
-no PDE run with this planner.
+A cell whose L2 run has not finished all 100 seeds is drawn with its PDE bar
+only and marked with a red "[PENDING]". The 2026-10-07 version replaced an earlier one that
+drew both bars from writeup/composed.csv (writeup/compose_all.py), a 25-seed
+composition that kept every L2 failure in the roadmap-success stratum and so
+overstated the PDE gain. Cube is omitted: one setting, reported in
+tab:abl-mstep.
+
+  table1 (default since 2026-10-11): the arms behind `ours`/`ours_l2` of
+    writeup/equal_particle_stats.py per environment, i.e. the planner of
+    tab:planners with its M-step (OURS_PM); identical to pathwise when
+    OURS_PM=pathwise, and saved without suffix
+
+Usage: python figs/fig_cost_structures.py [table1|pathwise|score]
 """
 import csv
 import os
@@ -33,7 +46,7 @@ import glob
 
 ROOT = "/home/hviswan/Documents/grasp"
 sys.path.insert(0, f"{ROOT}/writeup")
-from equal_particle_stats import wilson  # noqa: E402  (95% intervals for the error bars)
+from equal_particle_stats import wilson, arm_dir  # noqa: E402  (95% intervals for the error bars)
 
 
 def _rate(pat):
@@ -46,15 +59,24 @@ def _rate(pat):
     return 100.0 * ok / n, n
 
 
+MSTEP = sys.argv[1] if len(sys.argv) > 1 else "table1"
+ARMS = {"table1": ("ours_l2", "ours"), "pathwise": ("l2fix", "pdefix"),
+        "score": ("em", "pde")}[MSTEP]
+SUFFIX = "" if MSTEP in ("table1", "pathwise") else "_score"
+
+
 def _load():
     out = {}
     for e in ORDER:
         for h in (5, 10, 15):
-            l2, n1 = _rate(f"sweep_emsmc/table/{e}/em_H{h}")
-            rm, n2 = _rate(f"sweep_emsmc/table/{e}/pde_H{h}")
-            assert n1 == n2 == 100, (e, h, n1, n2)
-            out[f"{e}_H{h}"] = dict(env=e, H=h, roadmap=rm, l2=l2, status="complete",
-                                    l2_ci=wilson(round(l2), 100), rm_ci=wilson(round(rm), 100))
+            l2, n1 = _rate(arm_dir(ARMS[0], e, h))
+            rm, n2 = _rate(arm_dir(ARMS[1], e, h))
+            assert n2 == 100, (e, h, n2)
+            done = n1 == 100
+            out[f"{e}_H{h}"] = dict(env=e, H=h, roadmap=rm, l2=l2 if done else None,
+                                    status="complete" if done else "pending",
+                                    l2_ci=wilson(round(l2), 100) if done else None,
+                                    rm_ci=wilson(round(rm), 100))
     return out
 
 
@@ -62,30 +84,38 @@ D = _load()
 
 
 def pooled(env, hs=(10, 15)):
-    cs = [D[f"{env}_H{h}"] for h in hs if f"{env}_H{h}" in D]
+    allc = [D[f"{env}_H{h}"] for h in hs if f"{env}_H{h}" in D]
+    cs = [c for c in allc if c["status"] == "complete"]
     if not cs:
         return None
     return (sum(c["l2"] for c in cs) / len(cs),
             sum(c["roadmap"] for c in cs) / len(cs),
-            any(c["status"] != "complete" for c in cs))
+            len(cs) < len(allc))
 
 
 def bars(ax, labels, l2, rm, part, l2_ci=None, rm_ci=None):
     # `part` marks cells whose fail stratum is incomplete. No longer drawn on the
     # bars; the status column of writeup/composed.csv still records it.
+    # An L2 value of None is a pending run: its bar, interval and difference
+    # are left out and the pair is labelled "[PENDING]" in red.
     x = np.arange(len(labels)); w = 0.36
-    ax.bar(x - w / 2, l2, w, color=GREY_LIGHT, edgecolor=GREY_DARK, lw=1.1)
+    have = [a is not None for a in l2]
+    ax.bar((x - w / 2)[have], [a for a in l2 if a is not None], w, color=GREY_LIGHT,
+           edgecolor=GREY_DARK, lw=1.1)
     ax.bar(x + w / 2, rm, w, color=PINK_LIGHT, edgecolor=PINK_DARK, lw=1.1)
-    tops = [max(a, b) for a, b in zip(l2, rm)]
+    tops = [max(a, b) if a is not None else b for a, b in zip(l2, rm)]
     if l2_ci is not None:
         for off, ys, ci in ((-w / 2, l2, l2_ci), (w / 2, rm, rm_ci)):
-            ax.errorbar(x + off, ys, yerr=[[y - lo for y, (lo, hi) in zip(ys, ci)],
-                                           [hi - y for y, (lo, hi) in zip(ys, ci)]],
+            keep = [i for i, y in enumerate(ys) if y is not None]
+            ax.errorbar((x + off)[keep], [ys[i] for i in keep],
+                        yerr=[[ys[i] - ci[i][0] for i in keep], [ci[i][1] - ys[i] for i in keep]],
                         fmt="none", ecolor=INK, elinewidth=0.7, capsize=1.5, capthick=0.7)
-        tops = [max(a[1], b[1]) for a, b in zip(l2_ci, rm_ci)]
+        tops = [max(a[1], b[1]) if a is not None else b[1] for a, b in zip(l2_ci, rm_ci)]
     for xi, (a, b, p, t) in enumerate(zip(l2, rm, part, tops)):
-        ax.text(xi, t + 3, f"{b - a:+.0f}",
-                ha="center", va="bottom", color=INK, fontsize=6.5, fontweight="bold")
+        ax.text(xi, t + 3, "[PENDING]" if a is None else f"{b - a:+.0f}",
+                ha="center", va="bottom", color="red" if a is None else INK,
+                fontsize=5.5 if a is None else 6.5,
+                fontweight="normal" if a is None else "bold")
     ax.set_xticks(x); ax.set_xticklabels(labels, color=INK)
     ax.set_ylim(0, 118)
     ax.set_yticks([0, 50, 100])          # pin: short panels otherwise drop the midpoint
@@ -107,12 +137,12 @@ if __name__ == "__main__":
     ax.set_ylabel("success rate", color=INK)
     h = [plt.Rectangle((0, 0), 1, 1, fc=GREY_LIGHT, ec=GREY_DARK, lw=1.1),
          plt.Rectangle((0, 0), 1, 1, fc=PINK_LIGHT, ec=PINK_DARK, lw=1.1)]
-    ax.legend(h, ["$L_2$ objective", "latent cost structure"], loc="upper center",
+    ax.legend(h, ["$L_2$ cost", "PDE cost"], loc="upper center",
               bbox_to_anchor=(0.5, -0.26), frameon=False, ncol=2,
               handlelength=1.1, columnspacing=1.4, borderpad=0.2)
     fig.tight_layout(rect=(0.02, 0.10, 0.98, 0.98))
     rounded_frame(fig, 0.008, 0.008, 0.984, 0.984)
-    save(fig, "cost_structures")
+    save(fig, "cost_structures" + SUFFIX)
 
     # ---- main text: one panel per environment, in a single row ----
     # Split out of the single five-environment chart, which crowded five bar
@@ -138,14 +168,14 @@ if __name__ == "__main__":
             ax.set_xticklabels([""])
     h = [plt.Rectangle((0, 0), 1, 1, fc=GREY_LIGHT, ec=GREY_DARK, lw=1.1),
          plt.Rectangle((0, 0), 1, 1, fc=PINK_LIGHT, ec=PINK_DARK, lw=1.1)]
-    fig.legend(h, ["$L_2$ objective", "latent cost structure"], loc="lower center",
+    fig.legend(h, ["$L_2$ cost", "PDE cost"], loc="lower center",
                bbox_to_anchor=(0.5, -0.02), frameon=False, ncol=2,
                handlelength=1.1, columnspacing=1.6)
     # No figure-level x label: the per-panel ticks are the horizons and the
     # caption says so, and a supxlabel collides with the legend at this height.
     fig.tight_layout(rect=(0.02, 0.13, 0.98, 0.97))
     rounded_frame(fig, 0.008, 0.008, 0.984, 0.984)
-    save(fig, "cost_structures_row")
+    save(fig, "cost_structures_row" + SUFFIX)
 
     # ---- appendix: resolved by horizon ----
     for H in (5, 10, 15):
@@ -166,10 +196,11 @@ if __name__ == "__main__":
             t.set_rotation(20); t.set_ha("right")
         fig.tight_layout(rect=(0.02, 0.02, 0.98, 0.97))
         rounded_frame(fig, 0.008, 0.008, 0.984, 0.984)
-        save(fig, f"cost_structures_h{H}")
+        save(fig, f"cost_structures_h{H}" + SUFFIX)
 
     print("wrote cost_structures + cost_structures_h{5,10,15}")
     for e in ORDER:
         r = pooled(e)
         if r:
-            print(f"  {NAME[e]:11s} L2 {r[0]:5.1f}%  latent {r[1]:5.1f}%  {r[1]-r[0]:+5.1f}")
+            print(f"  {NAME[e]:11s} L2 {r[0]:5.1f}%  latent {r[1]:5.1f}%  {r[1]-r[0]:+5.1f}"
+                  + ("  (pooled over finished horizons)" if r[2] else ""))

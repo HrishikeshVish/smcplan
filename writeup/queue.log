@@ -1,0 +1,352 @@
+[roadmap pointmaze H5 s6] success=1
+[rawl2 pointmaze H5 s6] success=1
+[roadmap pointmaze H5 s22] success=1
+[rawl2 pointmaze H5 s22] success=1
+[roadmap pointmaze H5 s37] success=1
+[rawl2 pointmaze H5 s37] success=1
+[roadmap pointmaze H5 s53] success=1
+[rawl2 pointmaze H5 s53] success=1
+[roadmap pointmaze H5 s65] success=1
+[rawl2 pointmaze H5 s65] success=1
+[roadmap pointmaze H5 s71] success=1
+[rawl2 pointmaze H5 s71] success=1
+[roadmap pointmaze H5 s75] success=1
+[rawl2 pointmaze H5 s75] success=1
+[roadmap pointmaze H5 s84] success=1
+[rawl2 pointmaze H5 s84] success=0
+[roadmap pointmaze H5 s90] success=1
+[rawl2 pointmaze H5 s90] success=1
+[roadmap pointmaze H5 s97] success=1
+[rawl2 pointmaze H5 s97] success=1
+[rawl2 pusht H5 s54] success=1
+[roadmap pusht H5 s72] success=1
+[rawl2 pusht H5 s72] success=1
+[roadmap pusht H5 s88] success=1
+[rawl2 pusht H5 s88] success=1
+[roadmap pusht H5 s89] success=1
+[rawl2 pusht H5 s89] success=1
+[roadmap pusht H5 s92] success=1
+[rawl2 pusht H5 s92] success=1
+[roadmap pusht H5 s94] success=1
+[rawl2 pusht H5 s94] success=1
+[roadmap wall H5 s12] success=1
+[rawl2 wall H5 s12] success=1
+[roadmap wall H5 s14] success=1
+[rawl2 wall H5 s14] success=1
+[roadmap wall H5 s30] success=1
+[rawl2 wall H5 s30] success=1
+[roadmap wall H5 s32] success=1
+[rawl2 wall H5 s32] success=1
+[roadmap wall H5 s33] success=1
+[rawl2 wall H5 s33] success=1
+[roadmap wall H5 s63] success=1
+[rawl2 wall H5 s63] success=1
+[roadmap wall H5 s71] success=1
+[rawl2 wall H5 s71] success=1
+[roadmap wall H5 s93] success=1
+[rawl2 wall H5 s93] success=1
+[roadmap wall H5 s99] success=1
+[rawl2 wall H5 s99] success=1
+[roadmap wall H5 s5] success=1
+[rawl2 wall H5 s5] success=1
+[roadmap reacher H5 s2] success=1
+[rawl2 reacher H5 s2] success=1
+[roadmap reacher H5 s14] success=1
+[rawl2 reacher H5 s14] success=1
+[roadmap reacher H5 s21] success=1
+[rawl2 reacher H5 s21] success=1
+[roadmap reacher H5 s31] success=1
+[rawl2 reacher H5 s31] success=1
+[roadmap reacher H5 s39] success=1
+[rawl2 reacher H5 s39] success=1
+[roadmap reacher H5 s49] success=1
+[rawl2 reacher H5 s49] success=1
+[roadmap reacher H5 s57] success=1
+[rawl2 reacher H5 s57] success=1
+[roadmap reacher H5 s69] success=1
+[rawl2 reacher H5 s69] success=1
+[roadmap reacher H5 s77] success=1
+[rawl2 reacher H5 s77] success=1
+[roadmap reacher H5 s87] success=1
+[rawl2 reacher H5 s87] success=1
+[rawl2 pointmaze H10 s53] success=0
+[roadmap pointmaze H10 s13] success=1
+[rawl2 pointmaze H10 s13] success=1
+[roadmap pointmaze H10 s23] success=1
+[rawl2 pointmaze H10 s23] success=0
+[roadmap pointmaze H10 s25] success=1
+[rawl2 pointmaze H10 s25] success=0
+[roadmap pointmaze H10 s36] success=1
+[rawl2 pointmaze H10 s36] success=0
+[roadmap pointmaze H10 s39] success=1
+[rawl2 pointmaze H10 s39] success=1
+[roadmap pointmaze H10 s44] success=1
+[rawl2 pointmaze H10 s44] success=1
+[roadmap pointmaze H10 s57] success=1
+[rawl2 pointmaze H10 s57] success=1
+[roadmap pointmaze H10 s63] success=1
+[rawl2 pointmaze H10 s63] success=0
+[roadmap pointmaze H10 s73] success=1
+[rawl2 pointmaze H10 s73] success=0
+[roadmap pointmaze H10 s77] success=1
+[rawl2 pointmaze H10 s77] success=1
+[roadmap pusht H10 s23] success=1
+[rawl2 pusht H10 s23] success=0
+[roadmap pusht H10 s24] success=1
+[rawl2 pusht H10 s24] success=1
+[roadmap pusht H10 s26] success=1
+[rawl2 pusht H10 s26] success=0
+[roadmap pusht H10 s27] success=1
+[rawl2 pusht H10 s27] success=1
+[roadmap pusht H10 s44] success=1
+[rawl2 pusht H10 s44] success=1
+[roadmap pusht H10 s51] success=1
+[rawl2 pusht H10 s51] success=1
+[roadmap pusht H10 s56] success=1
+[rawl2 pusht H10 s56] success=1
+[roadmap pusht H10 s60] success=1
+[rawl2 pusht H10 s60] success=0
+[roadmap pusht H10 s82] success=1
+[rawl2 pusht H10 s82] success=0
+[roadmap pusht H10 s92] success=1
+[rawl2 pusht H10 s92] success=0
+[roadmap pusht H10 s94] success=1
+[rawl2 pusht H10 s94] success=1
+[roadmap pusht H10 s95] success=1
+[rawl2 pusht H10 s95] success=0
+[roadmap pusht H10 s96] success=1
+[rawl2 pusht H10 s96] success=1
+[roadmap wall H10 s12] success=1
+[rawl2 wall H10 s12] success=1
+[roadmap wall H10 s28] success=1
+[rawl2 wall H10 s28] success=1
+[roadmap wall H10 s32] success=1
+[rawl2 wall H10 s32] success=1
+[roadmap wall H10 s33] success=1
+[rawl2 wall H10 s33] success=1
+[roadmap wall H10 s34] success=1
+[rawl2 wall H10 s34] success=1
+[roadmap wall H10 s47] success=1
+[rawl2 wall H10 s47] success=1
+[roadmap wall H10 s53] success=1
+[rawl2 wall H10 s53] success=1
+[roadmap wall H10 s55] success=1
+[rawl2 wall H10 s55] success=1
+[roadmap wall H10 s65] success=1
+[rawl2 wall H10 s65] success=1
+[roadmap wall H10 s69] success=1
+[rawl2 wall H10 s69] success=1
+[roadmap wall H10 s71] success=1
+[rawl2 wall H10 s71] success=1
+[roadmap wall H10 s89] success=1
+[rawl2 wall H10 s89] success=1
+[roadmap wall H10 s93] success=1
+[rawl2 wall H10 s93] success=1
+[roadmap wall H10 s94] success=1
+[rawl2 wall H10 s94] success=1
+[roadmap wall H10 s98] success=1
+[rawl2 wall H10 s98] success=1
+[roadmap wall H10 s99] success=1
+[rawl2 wall H10 s99] success=1
+[roadmap reacher H10 s3] success=1
+[rawl2 reacher H10 s3] success=1
+[roadmap reacher H10 s15] success=0
+[rawl2 reacher H10 s15] success=0
+[roadmap reacher H10 s23] success=1
+[rawl2 reacher H10 s23] success=1
+[roadmap reacher H10 s34] success=1
+[rawl2 reacher H10 s34] success=1
+[roadmap reacher H10 s43] success=1
+[rawl2 reacher H10 s43] success=1
+[roadmap reacher H10 s54] success=1
+[rawl2 reacher H10 s54] success=1
+[roadmap reacher H10 s61] success=0
+[rawl2 reacher H10 s61] success=1
+[roadmap reacher H10 s69] success=1
+[rawl2 reacher H10 s69] success=1
+[roadmap reacher H10 s79] success=1
+[rawl2 reacher H10 s79] success=0
+[roadmap reacher H10 s90] success=1
+[rawl2 reacher H10 s90] success=1
+[roadmap pointmaze H15 s1] success=1
+[rawl2 pointmaze H15 s1] success=1
+[roadmap pointmaze H15 s19] success=1
+[rawl2 pointmaze H15 s19] success=1
+[roadmap pointmaze H15 s21] success=1
+[rawl2 pointmaze H15 s21] success=1
+[roadmap pointmaze H15 s22] success=1
+[rawl2 pointmaze H15 s22] success=1
+[roadmap pointmaze H15 s23] success=1
+[rawl2 pointmaze H15 s23] success=1
+[roadmap pointmaze H15 s38] success=1
+[rawl2 pointmaze H15 s38] success=0
+[roadmap pointmaze H15 s44] success=1
+[rawl2 pointmaze H15 s44] success=1
+[roadmap pointmaze H15 s62] success=1
+[rawl2 pointmaze H15 s62] success=0
+[roadmap pointmaze H15 s66] success=1
+[rawl2 pointmaze H15 s66] success=1
+[roadmap pointmaze H15 s74] success=1
+[rawl2 pointmaze H15 s74] success=1
+[roadmap pusht H15 s48] success=1
+[rawl2 pusht H15 s48] success=1
+[roadmap pusht H15 s61] success=1
+[rawl2 pusht H15 s61] success=0
+[roadmap pusht H15 s94] success=1
+[rawl2 pusht H15 s94] success=1
+[roadmap pusht H15 s96] success=1
+[rawl2 pusht H15 s96] success=1
+[roadmap wall H15 s23] success=1
+[rawl2 wall H15 s23] success=1
+[roadmap wall H15 s36] success=1
+[rawl2 wall H15 s36] success=1
+[roadmap wall H15 s55] success=1
+[rawl2 wall H15 s55] success=1
+[roadmap wall H15 s97] success=1
+[rawl2 wall H15 s97] success=1
+[roadmap wall H15 s7] success=1
+[rawl2 wall H15 s7] success=1
+[roadmap wall H15 s18] success=1
+[rawl2 wall H15 s18] success=0
+[roadmap wall H15 s43] success=1
+[rawl2 wall H15 s43] success=1
+[roadmap wall H15 s59] success=1
+[rawl2 wall H15 s59] success=1
+[roadmap wall H15 s71] success=1
+[rawl2 wall H15 s71] success=1
+[roadmap wall H15 s80] success=1
+[rawl2 wall H15 s80] success=1
+[roadmap reacher H15 s1] success=1
+[rawl2 reacher H15 s1] success=1
+[roadmap reacher H15 s7] success=1
+[rawl2 reacher H15 s7] success=1
+[roadmap reacher H15 s9] success=0
+[rawl2 reacher H15 s9] success=0
+[roadmap reacher H15 s20] success=1
+[rawl2 reacher H15 s20] success=1
+[roadmap reacher H15 s27] success=0
+[rawl2 reacher H15 s27] success=0
+[roadmap reacher H15 s32] success=0
+[rawl2 reacher H15 s32] success=1
+[roadmap reacher H15 s40] success=1
+[rawl2 reacher H15 s40] success=1
+[roadmap reacher H15 s42] success=1
+[rawl2 reacher H15 s42] success=1
+[roadmap reacher H15 s52] success=1
+[rawl2 reacher H15 s52] success=1
+[roadmap reacher H15 s59] success=0
+[rawl2 reacher H15 s59] success=0
+[roadmap reacher H15 s68] success=1
+[rawl2 reacher H15 s68] success=1
+[roadmap reacher H15 s70] success=0
+[rawl2 reacher H15 s70] success=1
+=== RAWL2 DONE ===
+=== rawl2 expansion done 15:12 ===
+[ess ess_target_frac=0.25 s73] success=0
+[ess ess_target_frac=0.25 s79] success=0
+[ess ess_target_frac=0.25 s84] success=1
+[ess ess_target_frac=0.25 s93] success=1
+[ess ess_target_frac=0.25 s99] success=1
+[ess ess_target_frac=0.25 s100] success=0
+[ess ess_target_frac=0.75 s1] success=1
+[ess ess_target_frac=0.75 s6] success=1
+[ess ess_target_frac=0.75 s7] success=1
+[ess ess_target_frac=0.75 s14] success=1
+[ess ess_target_frac=0.75 s20] success=1
+[ess ess_target_frac=0.75 s25] success=0
+[ess ess_target_frac=0.75 s33] success=1
+[ess ess_target_frac=0.75 s38] success=1
+[ess ess_target_frac=0.75 s44] success=1
+[ess ess_target_frac=0.75 s45] success=1
+[ess ess_target_frac=0.75 s54] success=1
+[ess ess_target_frac=0.75 s60] success=0
+[ess ess_target_frac=0.75 s65] success=1
+[ess ess_target_frac=0.75 s68] success=1
+[ess ess_target_frac=0.75 s73] success=1
+[ess ess_target_frac=0.75 s79] success=1
+[ess ess_target_frac=0.75 s84] success=1
+[ess ess_target_frac=0.75 s93] success=1
+[ess ess_target_frac=0.75 s99] success=1
+[ess ess_target_frac=0.75 s100] success=1
+=== STREAM ess DONE ===
+=== ess done 15:33 ===
+[budget opt_steps=25 s7] success=0
+[budget opt_steps=25 s14] success=1
+[budget opt_steps=25 s20] success=1
+[budget opt_steps=25 s25] success=0
+[budget opt_steps=25 s33] success=1
+[budget opt_steps=25 s38] success=1
+[budget opt_steps=25 s44] success=0
+[budget opt_steps=25 s45] success=0
+[budget opt_steps=25 s54] success=1
+[budget opt_steps=25 s60] success=0
+[budget opt_steps=25 s65] success=0
+[budget opt_steps=25 s68] success=0
+[budget opt_steps=25 s73] success=0
+[budget opt_steps=25 s79] success=0
+[budget opt_steps=25 s84] success=1
+[budget opt_steps=25 s93] success=1
+[budget opt_steps=25 s99] success=1
+[budget opt_steps=25 s100] success=0
+[budget opt_steps=50 s1] success=1
+[budget opt_steps=50 s6] success=1
+[budget opt_steps=50 s7] success=0
+[budget opt_steps=50 s14] success=1
+[budget opt_steps=50 s20] success=1
+[budget opt_steps=50 s25] success=0
+[budget opt_steps=50 s33] success=1
+[budget opt_steps=50 s38] success=1
+[budget opt_steps=50 s44] success=1
+[budget opt_steps=50 s45] success=0
+[budget opt_steps=50 s54] success=1
+[budget opt_steps=50 s60] success=1
+[budget opt_steps=50 s65] success=1
+[budget opt_steps=50 s68] success=1
+[budget opt_steps=50 s73] success=1
+[budget opt_steps=50 s79] success=1
+[budget opt_steps=50 s84] success=1
+[budget opt_steps=50 s93] success=1
+[budget opt_steps=50 s99] success=1
+[budget opt_steps=50 s100] success=0
+[budget opt_steps=100 s1] success=1
+[budget opt_steps=100 s6] success=1
+[budget opt_steps=100 s7] success=1
+[budget opt_steps=100 s14] success=1
+[budget opt_steps=100 s20] success=1
+[budget opt_steps=100 s25] success=0
+[budget opt_steps=100 s33] success=1
+[budget opt_steps=100 s38] success=1
+[budget opt_steps=100 s44] success=1
+[budget opt_steps=100 s45] success=0
+[budget opt_steps=100 s54] success=1
+[budget opt_steps=100 s60] success=1
+[budget opt_steps=100 s65] success=1
+[budget opt_steps=100 s68] success=1
+[budget opt_steps=100 s73] success=1
+[budget opt_steps=100 s79] success=1
+[budget opt_steps=100 s84] success=1
+[budget opt_steps=100 s93] success=1
+[budget opt_steps=100 s99] success=1
+[budget opt_steps=100 s100] success=0
+[budget opt_steps=300 s1] success=1
+[budget opt_steps=300 s6] success=1
+[budget opt_steps=300 s7] success=0
+[budget opt_steps=300 s14] success=1
+[budget opt_steps=300 s20] success=1
+[budget opt_steps=300 s25] success=1
+[budget opt_steps=300 s33] success=1
+[budget opt_steps=300 s38] success=1
+[budget opt_steps=300 s44] success=1
+[budget opt_steps=300 s45] success=0
+[budget opt_steps=300 s54] success=1
+[budget opt_steps=300 s60] success=1
+[budget opt_steps=300 s65] success=1
+[budget opt_steps=300 s68] success=1
+[budget opt_steps=300 s73] success=1
+[budget opt_steps=300 s79] success=1
+[budget opt_steps=300 s84] success=1
+[budget opt_steps=300 s93] success=1
+[budget opt_steps=300 s99] success=1
+[budget opt_steps=300 s100] success=0
+=== STREAM budget DONE ===
+=== QUEUE COMPLETE 16:23 ===
