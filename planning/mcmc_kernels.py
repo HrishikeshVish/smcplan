@@ -212,7 +212,18 @@ class ULA:
     evals_per_step = 1
     needs_grad = True
 
-    def step(self, state, target, eps, scale=None):
+    def step(self, state, target, eps, scale=None, mu_after=None):
+        """One ULA step; `mu_after` selects SOSMC's kernel indexing.
+
+        With mu_after=None both kernels sit at the current target, so the
+        increment below is the Jarzynski factor at a single potential and the
+        change of target is left to the caller. With mu_after set, `state` is
+        expected to be composed at theta_{k-1} and the proposal is recomposed at
+        theta_k = mu_after, so the forward kernel is at theta_{k-1} and the
+        backward at theta_k -- SOSMC Remark 1 -- and the increment becomes their
+        Eq. (8) in full, equivalently the recursion of JALA-EM Eq. (7). The
+        recompose reuses the cached C and grad C, so this costs no rollout.
+        """
         y, gy = _precond_views(state, scale)
         noise = torch.randn_like(y)
         drift = eps * gy
@@ -220,6 +231,9 @@ class ULA:
         y_prop = y + drift + diffusion
         prop = y_prop if scale is None else y_prop * scale
         new = target.evaluate(prop)
+        if mu_after is not None:
+            target.mu = mu_after
+            new = target.recompose(new)
         y_new, gy_new = _precond_views(new, scale)
         ones = torch.ones(y.shape[0], device=y.device)
         # Jarzynski increment in the kernel's OWN (preconditioned) coordinates.

@@ -208,6 +208,7 @@ class EMSMCPlanner(GDPlanner):
         kernel="mala",
         n_kernel_steps=1,
         kernel_step_size=0.1,
+        kernel_indexing="current",
         adapt_step_size=True,
         kernel_warmup=30,
         target_accept=None,
@@ -292,6 +293,16 @@ class EMSMCPlanner(GDPlanner):
 
         assert kernel in ("mala", "rwm", "hmc", "ula"), kernel
         self.kernel = kernel
+        # Which of the parametrisations of SOSMC Remark 2 the kernel uses.
+        # "current" (default, and what every reported run used): both kernels at
+        # theta_k, so the weight is the change of target times the Jarzynski
+        # factor at the single potential U_k. "sosmc": forward kernel at
+        # theta_{k-1} and backward at theta_k, which folds the change of target
+        # into the two alphas and reproduces JALA-EM Eq. (7) exactly. The two
+        # agree in the continuous-time limit; at sigma_p=1, eta=0.18 and an Adam
+        # step of 0.1 the drifts differ by ~3% of the ULA noise. ULA only -- the
+        # Metropolis-adjusted kernels stay at theta_k either way.
+        self.kernel_indexing = kernel_indexing
         self.n_kernel_steps = n_kernel_steps
         self.kernel_step_size = kernel_step_size
         self.adapt_step_size = adapt_step_size
@@ -541,7 +552,12 @@ class EMSMCPlanner(GDPlanner):
             # -- 1. reweight for the previous M-step's move of mu. Exact and
             #       free: C(a) does not depend on mu, so the cost terms cancel
             #       and only the analytic prior ratio survives.
-            if self.m_step != "none":
+            #       Under SOSMC indexing this term does not exist: the forward
+            #       kernel sits at theta_{k-1} and the backward at theta_k, so
+            #       the change of target is carried by the two alphas of their
+            #       Eq. (8) and applying it here would double-count it.
+            if self.m_step != "none" and not (
+                    self.kernel_indexing == "sosmc" and self.kernel == "ula"):
                 logw, log_zhat = bump_weights(
                     logw,
                     target.log_prior(state.position, target.mu)
@@ -611,7 +627,16 @@ class EMSMCPlanner(GDPlanner):
                 if self.kernel == "hmc" and self.hmc_jitter:
                     kern.n_leaps = int(torch.randint(
                         1, 2 * max(1, self.hmc_leaps) + 1, (1,)).item())
-                state, info = kern.step(state, target, eps, scale=scale)
+                if self.kernel_indexing == "sosmc" and self.kernel == "ula":
+                    # SOSMC Remark 1: forward kernel at theta_{k-1}. No rollout
+                    # -- recompose reuses the cached C and grad C.
+                    mu_now = target.mu
+                    target.mu = mu_prev
+                    state = target.recompose(state)
+                    state, info = kern.step(state, target, eps, scale=scale,
+                                            mu_after=mu_now)
+                else:
+                    state, info = kern.step(state, target, eps, scale=scale)
                 kdiag = {k: v for k, v in info.items()
                          if k in ("drift_norm", "noise_norm", "move_snr",
                                   "step_norm")}

@@ -217,6 +217,13 @@ class PlanWorkspace:
 
         self._init_device_and_seeds()
         objective_fn = hydra.utils.call(cfg_dict["objective"])
+        # Optional PDE roadmap cost for planners that score candidates
+        # through objective_fn (GD, CEM, MPPI): reviewer WT5H's Q2.
+        pde_cost = cfg_dict.get("pde_cost")
+        if pde_cost:
+            from planning.roadmap_cost import RoadmapObjective
+            objective_fn = RoadmapObjective(
+                objective_fn, device=self.device, **dict(pde_cost))
         self._init_preprocessor_and_targets()
         self._init_evaluator()
         self._ensure_wandb_run()

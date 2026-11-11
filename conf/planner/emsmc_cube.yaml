@@ -51,6 +51,10 @@ action_clamp: 0
 # mala | rwm | hmc | ula. Ported from blackjax and verified against it in
 # planning/test_mcmc_kernels.py. None of them optimise.
 kernel: ula
+# Which parametrisation of SOSMC Remark 2 the kernel uses. "current" is
+# both kernels at theta_k, which is what every reported run used; "sosmc"
+# puts the forward kernel at theta_{k-1} and reproduces JALA-EM Eq. (7).
+kernel_indexing: current
 n_kernel_steps: 1
 kernel_step_size: 0.18
 # Nesterov dual averaging to the kernel's optimal-scaling acceptance rate
