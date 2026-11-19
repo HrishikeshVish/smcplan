@@ -28,7 +28,7 @@ updates the plan from the weighted population.</em>
 <div id="toc">
   <ul align="center" style="list-style: none;">
     <summary>
-      <h2><a href="#overview">Overview</a> &emsp; <a href="#method">Method</a> &emsp; <a href="#results">Results</a> &emsp; <a href="#installation">Installation</a> &emsp; <a href="#quick-start">Quick Start</a> &emsp; <a href="#reproducing-the-paper">Reproducing</a> &emsp; <a href="#citation">Citation</a></h2>
+      <h2><a href="#overview">Overview</a> &emsp; <a href="#method">Method</a> &emsp; <a href="#results">Results</a> &emsp; <a href="#installation">Installation</a> &emsp; <a href="#data">Data</a> &emsp; <a href="#quick-start">Quick Start</a> &emsp; <a href="#reproducing-the-paper">Reproducing</a> &emsp; <a href="#baselines-and-third-party-code">Baselines</a> &emsp; <a href="#citation">Citation</a></h2>
     </summary>
   </ul>
 </div>
@@ -177,8 +177,16 @@ start and the goal, so the difference is within-seed.</em>
 │   ├── plan.yaml plan_grasp.yaml # top-level entry configs
 │   ├── env/*.yaml                # dataset paths and model dims
 │   └── planner/*.yaml            # one config per planner per environment
-├── writeup/                      # sweep launchers and the table generators
+├── scripts/
+│   ├── common.sh                 # the three paths every script resolves from
+│   ├── download_data.sh          # datasets and pretrained world models
+│   ├── prepare_buffers.sh        # the five latent roadmap buffers
+│   ├── sweep.sh                  # launch a sweep: table1, baselines, cube, ...
+│   ├── reproduce.sh              # rebuild a table or figure from finished runs
+│   └── baselines.sh              # check out the third-party submodules
+├── writeup/                      # the sweep launchers and table generators themselves
 ├── figs/                         # the figure generators
+├── third_party/                  # pinned submodules: baselines and upstream world models
 └── assets/                       # the images in this README
 ```
 
@@ -199,14 +207,12 @@ conda activate grasp
 `install.sh --help` lists the steps individually (`--conda`, `--mujoco`, `--dataset-dir`,
 `--download-datasets`, `--extract-pusht-frames`). `--all` runs everything.
 
-**2. Data and checkpoints**
+**2. Data, checkpoints and roadmap buffers**
 ```bash
-./install.sh --dataset-dir /path/to/base --download-datasets
+bash scripts/download_data.sh /path/to/base   # datasets and pretrained world models
+bash scripts/prepare_buffers.sh all           # the latent roadmaps the PDE cost is solved on
 ```
-Datasets go to `<base>/datasets` and pretrained world models to `<base>/outputs`, and
-`DATASET_DIR=<base>/datasets` is written to your shell profile. The DINO-WM datasets come from the
-[OSF bucket](https://osf.io/bmw48/) published with DINO-WM. LeWM checkpoints are bundled, so no
-separate install is needed for Reacher and Cube.
+See [Data](#data) for what each step writes and how long it takes.
 
 **3. Check the install**
 ```bash
@@ -217,6 +223,60 @@ python planning/test_mcmc_kernels.py
 > `MUJOCO_GL` differs by environment. Reacher and Cube need `MUJOCO_GL=egl`. Point maze, Push-T and
 > Wall need it **unset** with a display available (`export DISPLAY=:0`); setting it to `egl` there
 > produces silently wrong renders. The sweep scripts in `writeup/` set this per environment.
+
+---
+
+## Data
+
+Everything resolves from three paths, each an environment variable with a repo-relative default, so
+no config holds an absolute path:
+
+| Variable | Default | Holds |
+| :--- | :--- | :--- |
+| `DATASET_DIR` | `<repo>/data` | the datasets |
+| `GRASP_CKPT_BASE` | `<repo>/checkpoints` | world models, loaded from `$GRASP_CKPT_BASE/outputs` |
+| `GRASP_BUFFER_DIR` | `<repo>/latent_buffers` | the latent roadmap buffers |
+
+`scripts/common.sh` sets them and every script sources it. `conf/plan*.yaml` and
+`conf/planner/*.yaml` read the last two through `${oc.env:...}`, so exporting one is enough to move
+a tree somewhere else.
+
+| What | Get it | Prepare it |
+| :--- | :--- | :--- |
+| DINO-WM datasets and checkpoints (Point maze, Push-T, Wall) | `bash scripts/download_data.sh <base>` | — |
+| LeWM data and checkpoints (Reacher, Cube) | same step | — |
+| Latent roadmap buffers, five of them | — | `bash scripts/prepare_buffers.sh all` |
+
+`download_data.sh` runs `install.sh`, which pulls the DINO-WM datasets and the pretrained world
+models from the [OSF bucket](https://osf.io/bmw48/) published with DINO-WM into `<base>/datasets`
+and `<base>/outputs`, then links them at `data/` and `checkpoints/` unless those already exist.
+
+`prepare_buffers.sh` encodes dataset states with the frozen world model and stores the observed
+transitions as `z_curr`/`z_next`; `planning/roadmap_cost.py` reads nothing else from a buffer. It
+needs a GPU. The script prints the expected shape after each build, so a buffer that came out a
+different size is visible at once:
+
+| Environment | Buffer | Latent | Rows | `graph_n_nodes` |
+| :--- | :--- | :-- | --: | --: |
+| Point maze | `pointmaze_buffer.pt` | `proprio`, 10-D | 3,800 | 3,800 |
+| Wall | `wall_buffer.pt` | `proprio`, 10-D | 12,600 | 12,600 |
+| Push-T | `pusht_offline_replay_buffer.pt` | `proprio`, 10-D | 994,573 | 55,000 |
+| Reacher | `lewm_reacher_fixed.pt` | `visual`, 192-D | 360,000 | 55,000 |
+| Cube | `lewm_cube_buffer.pt` | `visual`, 192-D | 56,000 | 55,000 |
+
+The row count is not cosmetic. Point maze and Wall set `graph_n_nodes` to the whole buffer, so a
+buffer of a different size is a different roadmap. Point maze encodes only the episodes whose frames
+are on disk, which is 200 of 2000 in the release, and the builder says so as it runs.
+
+<details>
+<summary><b>Where the shipped buffers came from</b></summary>
+
+Point maze, Wall, Reacher and Cube were built by `build_latent_buffer.py`, with the flags
+`prepare_buffers.sh` now records. The Push-T buffer was written by an earlier throwaway script and
+additionally carries `y_curr`/`y_next`, the raw proprioceptive states; the roadmap never reads them,
+so `build_latent_buffer.py --env pusht --latent-key proprio` produces an equivalent buffer.
+
+</details>
 
 ---
 
@@ -259,37 +319,51 @@ is how the sweeps collect one directory per seed.
 
 ## Reproducing the Paper
 
-Each cell of the main table is 100 seeds of one `plan.py` call. The launchers run them over the
-free GPUs, claim each seed with a lock directory so several workers can share a sweep, and skip any
-seed whose `result.txt` already exists, so a run can be interrupted and resumed.
+Two phases. A sweep runs the planning, which is days of GPU time; rebuilding a table reads the
+per-seed `result.txt` files a sweep wrote and takes seconds.
 
 ```bash
-# the main table: four environments, three horizons, 100 seeds
-GPUS="0 1" ENVS="pointmaze wall pusht reacher" bash writeup/launch_emsmc_table.sh
-
-# the baselines at the same budget
-bash writeup/launch_baselines_then_ablation.sh
-
-# the roadmap cost applied to the baselines
-bash writeup/run_pde_baselines.sh
+bash scripts/sweep.sh table1        # then, when it is done
+bash scripts/reproduce.sh table1
 ```
 
-Then build the tables and figures from the finished runs:
+Each cell of the main table is 100 seeds of one `plan.py` call. The launchers run them over the free
+GPUs, claim each seed with a lock directory so several workers can share a sweep, and skip any seed
+whose `result.txt` exists, so a sweep can be interrupted and resumed. `GPUS` picks the cards
+(default `0 1`) and `ENVS` narrows `table1`.
 
-| Output | Command |
-| :--- | :--- |
-| Main table | `python writeup/make_equal_particle_tables.py` |
-| Ablation tables | `python writeup/make_ablation_tables.py` |
-| Cube table | `python writeup/make_cube_table.py` |
-| Confidence intervals, paired tests | `python writeup/make_paired_table.py` |
-| Success against iteration | `python figs/fig_success_grid.py` |
-| Paired per-seed summary | `python figs/fig_paired_summary.py` |
-| Kernel comparison | `python figs/fig_kernels.py` |
-| Roadmap cost on the baselines | `python writeup/pde_baseline_stats.py && python figs/fig_pde_transfer.py` |
-| This README's summary figure | `python figs/fig_readme_summary.py` |
+| Result | Sweep | Rebuild |
+| :--- | :--- | :--- |
+| Tab. 1, the main planner comparison | `bash scripts/sweep.sh table1` and `bash scripts/sweep.sh baselines` | `bash scripts/reproduce.sh table1` |
+| Tab. 4, Cube under LeFlow's protocol | `bash scripts/sweep.sh cube` | `bash scripts/reproduce.sh cube` |
+| Tab. 6-8, M-step, budget, SMC and sensitivity | `bash scripts/sweep.sh ablations` | `bash scripts/reproduce.sh ablations` |
+| Tab. 11, Wilson intervals and paired McNemar | covered by the sweeps above | `bash scripts/reproduce.sh ci` |
+| Fig. 4, 5 and 9, and the rollout strips | covered by the sweeps above | `bash scripts/reproduce.sh figures` |
+| The roadmap cost on the baselines | `bash scripts/sweep.sh pde-baselines` | included in `reproduce.sh figures` |
+| Kernel comparison, JALA against MALA, RWM and HMC | `bash scripts/sweep.sh kernels` | included in `reproduce.sh figures` |
 
-`writeup/equal_particle_stats.py` is the single source of per-seed outcomes that the tables read,
-so a number can always be traced back to the seed directory it came from.
+Tables are written as the `.tex` files the paper `\input`s; figures land in `figs/`. Running
+`bash scripts/reproduce.sh all` rebuilds every one of them.
+
+`writeup/equal_particle_stats.py` is the single source of per-seed outcomes that the tables read, so
+a number can always be traced back to the seed directory it came from. The launchers the two
+wrappers call are the originals in `writeup/`, which can still be run directly.
+
+---
+
+## Baselines and Third-Party Code
+
+The baselines and the upstream world models are pinned submodules rather than vendored copies.
+**None of them is needed to plan with this repository or to rebuild any table**: every baseline in
+the paper is reimplemented in `planning/`, and the LeWM checkpoints are bundled.
+
+```bash
+bash scripts/baselines.sh             # check out all of them
+bash scripts/baselines.sh LeFlow      # or one, by directory name
+```
+
+`third_party/README.md` lists what each one is for. `LeFlow` and `GCIDM` are pinned at the commits
+the paper's runs used; the other four are reference points.
 
 ---
 

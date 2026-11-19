@@ -1,0 +1,18 @@
+[submodule "third_party/LeFlow"]
+	path = third_party/LeFlow
+	url = https://github.com/hsiangwei0903/LeFlow.git
+[submodule "third_party/GCIDM"]
+	path = third_party/GCIDM
+	url = https://github.com/hdnndh/Latent-Geometry-Beyond-Search-Amortizing-Planning-in-World-Models.git
+[submodule "third_party/dino_wm"]
+	path = third_party/dino_wm
+	url = https://github.com/gaoyuezhou/dino_wm.git
+[submodule "third_party/le-wm-grasp"]
+	path = third_party/le-wm-grasp
+	url = https://github.com/michael-psenka/le-wm-grasp.git
+[submodule "third_party/grasp"]
+	path = third_party/grasp
+	url = https://github.com/michael-psenka/grasp.git
+[submodule "third_party/blackjax"]
+	path = third_party/blackjax
+	url = https://github.com/blackjax-devs/blackjax.git
