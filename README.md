@@ -1,395 +1,339 @@
-# GRASP: Parallel stochastic planning for world models
+<div align="center">
 
-This repository adds the **GRASP** planner – a gradient-based planner with virtual latent states and stochastic state updates – for learned world models. GRASP optimizes both actions and intermediate “virtual” states in a lifted trajectory space, using dynamics consistency penalties to stay faithful to the learned dynamics while enabling efficient, parallelized planning.
+<div id="user-content-toc">
+  <ul align="center" style="list-style: none;">
+    <summary>
+      <h1>Latent Space Planning with Sequential Monte Carlo</h1>
+      <p><a href="https://hrishikeshvish.github.io/">Hrishikesh Viswanath</a><sup>1</sup> &emsp; Anindita Ghosh<sup>2</sup> &emsp; Uttaran Bhattacharya<sup>3</sup> &emsp; <a href="https://ideas.cs.purdue.edu">Aniket Bera</a><sup>1</sup></p>
+      <p><sup>1</sup>Department of Computer Science, Purdue University &emsp; <sup>2</sup>MPI for Informatics &emsp; <sup>3</sup>Adobe Systems</p>
+      <i>Preprint, 2026</i>
+    </summary>
+  </ul>
+</div>
 
-Concretely, GRASP optimizes a lifted objective over virtual states $\mathbf{s}$ and actions $\mathbf{a}$ of the form
+<a href="https://hrishikeshvish.github.io/smcplan/"><img src="https://img.shields.io/badge/Project-Page-0F7B8A?style=for-the-badge&labelColor=F0F0F0"/></a> &emsp;
+<a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.10-598BE7?style=for-the-badge&logo=python&logoColor=598BE7&labelColor=F0F0F0"/></a> &emsp;
+<a href="https://pytorch.org/"><img src="https://img.shields.io/badge/PyTorch-2.11-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=EE4C2C&labelColor=F0F0F0"/></a> &emsp;
+<a href="https://developer.nvidia.com/cuda-toolkit"><img src="https://img.shields.io/badge/CUDA-12.8-76B900?style=for-the-badge&logo=nvidia&logoColor=76B900&labelColor=F0F0F0"/></a> &emsp;
+<a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-4CAF50?style=for-the-badge&labelColor=F0F0F0"/></a>
+
+<br><br>
+<img src="assets/teaser.png" width="850px" alt="Planning as sequential Monte Carlo over action sequences"/>
+<br>
+<em>Each particle is a whole action sequence. Every iteration moves the population along the
+cost-defined target, reweights it, resamples it when the effective sample size drops, and then
+updates the plan from the weighted population.</em>
+<br><br>
+
+<div id="toc">
+  <ul align="center" style="list-style: none;">
+    <summary>
+      <h2><a href="#overview">Overview</a> &emsp; <a href="#method">Method</a> &emsp; <a href="#results">Results</a> &emsp; <a href="#installation">Installation</a> &emsp; <a href="#quick-start">Quick Start</a> &emsp; <a href="#reproducing-the-paper">Reproducing</a> &emsp; <a href="#citation">Citation</a></h2>
+    </summary>
+  </ul>
+</div>
+
+</div>
+
+---
+
+## Overview
+
+Planning in a learned world model usually means gradient descent on one action sequence. A single
+trajectory is cheap, but it commits early, and the places where it gets stuck are exactly the
+places where the world model is least trustworthy.
+
+We plan with a **population of action sequences** instead. A plan is a mean sequence $\bm\mu$ with
+a reference distribution $q(\cdot\mid\bm\mu)$ around it, and tilting that reference by the planning
+cost $C$ gives a target
 
 ```math
-\mathcal{L}(\mathbf{s}, \mathbf{a}) =
-\sum_{t=0}^{T-1} \big\| F_\theta(\bar{s}_t, a_t) - s_{t+1} \big\|_2^2
-\;+\;
-\gamma \sum_{t=0}^{T-1} \big\| F_\theta(\bar{s}_t, a_t) - g \big\|_2^2 ,
+\gamma_{\bm{\mu}}(\mathbf a) = q(\mathbf a \mid \bm{\mu}) \exp\!\big(-C(\mathbf a)/\alpha\big).
 ```
 
-where $F_\theta$ is the learned world model, $\bar{s}_t$ is a stop-gradient copy of $s_t$ (no gradients through the state input), and $g$ is the encoded goal state. The first term enforces pairwise dynamics consistency between virtual states, while the second provides dense goal shaping to counteract the stopgrad's initial state biased reshaping.
+The plan moves by one optimizer step per iteration, so the targets of consecutive iterations form a
+sequence, and sequential Monte Carlo is what carries a population across it. Each particle takes an
+unadjusted Langevin step on the current target,
 
-An example planning command with GRASP is:
-
-```bash
-python plan.py model_name=pusht n_evals=5 planner=grasp goal_H=8
+```math
+\mathbf a_k^{(i)} = \mathbf a_{k-1}^{(i)} + \eta\, \nabla_{\mathbf a} \log \gamma_k\big(\mathbf a_{k-1}^{(i)}\big) + \sqrt{2\eta}\, \varepsilon_k^{(i)},
 ```
 
-## Minimal pseudocode: `grasp_pseudocode.py`
+the population is reweighted by Jarzynski's equality,
+$W_k^{(i)} = W_{k-1}^{(i)} G_k\big(\mathbf a_{k-1}^{(i)}, \mathbf a_k^{(i)}\big)$, and resampled when
+its effective sample size falls. The plan is then updated along the weighted population gradient
+$\mathbf g_k = \sum_i w_k^{(i)} \nabla_{\bm\mu} U_{\bm\mu_k}\big(\mathbf a_k^{(i)}\big)$, which is
+the maximization step of the EM view of MPPI. The sampler and the optimizer are two halves of one
+iteration: the E-step supplies the weights, the M-step moves the plan.
 
-A self-contained, minimal implementation of the core GRASP algorithm lives in **`grasp_pseudocode.py`** at the repository root, for ease of re-implementation. This file strips away the full planner’s infrastructure (logging, CEM, Lagrangian terms, mixed precision, etc.) and exposes only the essential method.
+### Highlights
 
-**What it provides**
+- **A population, not a trajectory.** Twelve particles explore in parallel, and resampling moves
+  effort onto the ones that are working. The whole study runs at twelve candidates and 150
+  iterations, which is also what every baseline gets.
+- **Four propagation kernels, one planner.** ULA with Jarzynski weights, plus MALA, random-walk
+  Metropolis and HMC, ported from [blackjax](https://github.com/blackjax-devs/blackjax) and checked
+  against it in `planning/test_mcmc_kernels.py`.
+- **A cost-to-go from a PDE on the latent roadmap.** Latent distance to the goal is a poor guide
+  when the straight line in latent space crosses a wall. We build a roadmap over buffer latents,
+  solve a heat or random-walk equation on it for a cost-to-go $V$, and add $\lambda_V V$ to the
+  terminal distance. `planning/roadmap_cost.py`, `build_latent_buffer.py`.
+- **Two world-model families.** DINO-WM (Point maze, Push-T, Wall) and LeWM/JEPA (Reacher, Cube),
+  behind one planner interface.
+- **Five planners in one codebase**, each at its authors' objective: GD, GRASP, CEM, MPPI and ours.
+- **Every config behind a reported number ships as-is**, including the per-environment rollout
+  chunking that keeps a 16 GB card from running out of memory at $H=15$.
 
-- **World model interface**: A clear specification of what a world model must implement—a single `rollout(s_0, a)` function that outputs the state sequence from initial state s_0 over actions a.
-- **Core algorithm**: Virtual state initialization (linear interpolation), the stop-gradient dynamics + goal-shaping loss, Langevin-style state noise, and periodic full-rollout sync.
-- **Runnable example**: A simple integrator world model (`s_next = s + dt * a`) and a `__main__` block that runs a barebones version of GRASP.
+---
 
+## Method
 
-## Built on DINO-WM
+One iteration is move, reweight, resample, update. `planning/em_smc.py` is the planner of the
+paper's Algorithm 1; `planning/fk_planner.py` is an earlier Feynman-Kac variant in which the
+cost-to-go enters only through the tempered weights, kept because the ablations compare against it.
 
-This codebase is a derivative of the **DINO-WM** project, reusing its world-model training, datasets, and environment wrappers while adding GRASP-focused planning algorithms and analysis.
+The cost $C$ is a terminal latent distance plus, optionally, the roadmap cost-to-go. Setting
+`planner.lambda_v=0` recovers the plain $L_2$ objective, which is the row the paper reports
+alongside the PDE cost so the planner and the objective can be read apart.
 
-- **Paper**: [[DINO-WM: World Models on Pre-trained Visual Features enable Zero-shot Planning]](https://arxiv.org/abs/2411.04983)  
-- **Data**: [OSF dataset bucket](https://osf.io/bmw48/?view_only=a56a296ce3b24cceaf408383a175ce28)  
-- **Project website**: [https://dino-wm.github.io/](https://dino-wm.github.io/)
+<div align="center">
+<img src="assets/cost_structures.png" width="820px" alt="PDE cost-to-go against latent distance"/>
+<br>
+<em>The roadmap cost-to-go against plain latent distance.</em>
+</div>
 
-If you use this repository, please also cite the original DINO-WM paper.
+---
 
+## Results
 
-## More Environments and World Models
+Success rate averaged over the twelve cells of the main table, four environments at horizons 5, 10
+and 15, 100 seeds each. Every planner gets twelve candidate action sequences and 150 iterations
+over the same pretrained world model, the same seeds and the same start and goal pairs.
 
-GRASP can be used with other world models beyond DINO-WM. We provide **adapter repos** that integrate GRASP with additional world model codebases (and will PR once stable):
+<div align="center">
+<img src="assets/mean_success.png" width="700px" alt="Mean success rate per planner"/>
+</div>
 
-| Adapter | World Model | Environments |
-|---------|-------------|-------------|
-| [le-wm-grasp](https://github.com/michael-psenka/le-wm-grasp) | LeWorldModel (LeWM) | PushT, TwoRoom, Reacher, Cube |
-| [jepa-wms-grasp](https://github.com/michael-psenka/jepa-wms-grasp) | JEPA-WMs | Metaworld, DROID, RoboCasa |
+| Planner | Objective | Mean success (%) |
+| :--- | :--- | :-: |
+| **Ours** | PDE cost-to-go | **79.8** |
+| **Ours** | $L_2$ | 72.6 |
+| MPPI | as published | 72.3 |
+| GD | as published | 50.9 |
+| CEM | as published | 45.2 |
+| GRASP | as published | 29.9 |
 
-To set up an adapter, use the `setup_adapter.sh` script:
+Per-cell numbers, confidence intervals and paired tests are in the paper.
 
-```bash
-# Clone a specific adapter into adapters/<name>
-bash setup_adapter.sh le-wm-grasp
+<div align="center">
+<img src="assets/success_grid.png" width="850px" alt="Success against iteration"/>
+<br>
+<em>Fraction of seeds solved at or before each iteration, every planner holding twelve particles.
+Each environment is shown at the horizon where the margin over the strongest baseline is largest.</em>
+<br><br>
+<img src="assets/paired_summary.png" width="700px" alt="Paired per-seed comparison"/>
+<br>
+<em>Paired per-seed comparison against each baseline. Both arms of a pair share the seed, hence the
+start and the goal, so the difference is within-seed.</em>
+<br><br>
+<img src="assets/kernels.png" width="700px" alt="Propagation kernels compared"/>
+<br>
+<em>Success rate by propagation kernel, inside the same planner.</em>
+</div>
 
-# Clone to a custom directory
-bash setup_adapter.sh jepa-wms-grasp /path/to/my/adapter
+<div align="center">
+<table>
+<tr>
+<td align="center"><img src="assets/frames_pointmaze.png" width="260px"/><br><em>Point maze</em></td>
+<td align="center"><img src="assets/frames_pusht.png" width="260px"/><br><em>Push-T</em></td>
+<td align="center"><img src="assets/frames_cube.png" width="260px"/><br><em>Cube</em></td>
+</tr>
+</table>
+</div>
 
-# Clone all available adapters
-bash setup_adapter.sh all
+---
+
+## Repository Structure
+
+```
+.
+├── run.sh                        # one run at the paper's protocol (wraps plan.py)
+├── plan.py                       # the planning entry point (Hydra)
+├── train.py                      # DINO-WM world-model training (legacy path)
+├── build_latent_buffer.py        # latent replay buffer -> roadmap cost-to-go
+├── grasp_pseudocode.py           # minimal standalone GRASP reference
+├── planning/
+│   ├── em_smc.py                 # ours: SMC E-step + Adam M-step (Algorithm 1)
+│   ├── fk_planner.py             # earlier Feynman-Kac variant
+│   ├── mcmc_kernels.py           # ULA / MALA / RWM / HMC, verified against blackjax
+│   ├── roadmap_cost.py           # the PDE cost-to-go on the latent roadmap
+│   ├── em_target.py              # the tilted target and its incremental weight
+│   ├── gd.py grasp.py cem.py mppi.py mpc.py   # baselines
+│   ├── objectives.py             # terminal cost, roadmap term, action regularizer
+│   └── evaluator.py              # episode rollout and scoring
+├── models/                       # DINO-WM encoders/predictors + LeWM (JEPA) wrapper
+├── env/                          # gym registrations and wrappers, plus vectorized envs
+├── conf/
+│   ├── plan.yaml plan_grasp.yaml # top-level entry configs
+│   ├── env/*.yaml                # dataset paths and model dims
+│   └── planner/*.yaml            # one config per planner per environment
+├── writeup/                      # sweep launchers and the table generators
+├── figs/                         # the figure generators
+└── assets/                       # the images in this README
 ```
 
-Each adapter repo contains its own installation instructions, pretrained model links, and GRASP configuration. The `adapters/` directory is gitignored so the base repo stays clean.
-
-## How GRASP works (high level)
-
-At a high level, GRASP is a **parallel stochastic gradient-based planner for world models** with four key ideas:
-
-- **Lifted virtual states**: Instead of optimizing only actions through a long serial rollout, GRASP introduces intermediate **virtual states** $s_1,\dots,s_{T-1}$ and penalizes pairwise dynamics violations $\|F_\theta(s_t,a_t) - s_{t+1}\|^2$. This makes all world-model evaluations across time **parallelizable**.
-- **State-space exploration via noise**: During optimization, GRASP updates states with a descent-like step **plus Gaussian noise**. This encourages exploration in the lifted state space and helps escape bad local minima while keeping actions guided by gradients.
-- **Cut brittle state-input gradients, keep action gradients**: Gradients through the state inputs of high-dimensional vision models can be adversarial. GRASP uses **stop-grad copies** of states $\bar{s}_t$ inside the world model so that gradients flow cleanly to actions but not through fragile $\nabla_s F_\theta$ directions.
-- **Goal shaping and periodic rollout sync**: A dense **goal-shaping term** encourages each predicted next state to move toward the goal, and every few iterations GRASP runs a short **serial rollout sync** step that takes small gradient steps on the original terminal loss, refining actions without losing the benefits of the smoother lifted landscape.
-
-Together, these ingredients yield a planner that is (1) parallel over time during exploration, (2) robust to brittle state gradients, and (3) periodically grounded by true rollout-based gradients.
-
-## Getting started
-
-1. [Installation](#installation)
-2. [Datasets](#datasets)
-3. [Train a world model](#train-a-world-model)
-4. [Plan with GRASP](#plan-with-grasp)
-5. [Analyze results](#analyze-results)
+---
 
 ## Installation
 
-The easiest way to set everything up is via the `install.sh` script in the repository root. By default it:
+Tested on Ubuntu with Python 3.10, PyTorch 2.11 and CUDA 12.8.
 
-- creates/updates the `grasp` conda environment from `environment.yaml`,
-- can optionally install Mujoco,
-- configures `DATASET_DIR` and can download datasets from OSF,
-- and can extract PushT frames.
-
-The following will set everything up from scratch:
-
+**1. Environment**
 ```bash
-git clone https://github.com/michael-psenka/dino-wm-admm-planning.git
-cd dino-wm-admm-planning
-
-# Full setup: env + Mujoco + dataset dir + download datasets + extract PushT frames
-./install.sh --all --dataset-dir /path/to/base
-```
-
-This will also download the **default pre-trained world models** (for `point_maze`, `wall_single`, and `pusht`) into `<base>/outputs`, which matches where `plan.py` loads from when `ckpt_base_path` points to your base directory. If you prefer to **train your own world model**, you can either:
-
-- run `./install.sh --conda` to just set up the environment, then use `train.py` manually, or  
-- combine `--dataset-dir` / `--download-datasets` with your own training commands (see [Train a world model](#train-a-world-model)).
-
-If you want to set things up manually instead of using `install.sh`, you can still clone the repo and create the environment directly:
-
-```bash
-git clone https://github.com/michael-psenka/dino-wm-admm-planning.git
-cd dino-wm-admm-planning
-conda env create -f environment.yaml
+git clone https://github.com/HrishikeshVish/smcplan.git
+cd smcplan
+./install.sh --conda --mujoco
 conda activate grasp
 ```
 
-### Mujoco
+`install.sh --help` lists the steps individually (`--conda`, `--mujoco`, `--dataset-dir`,
+`--download-datasets`, `--extract-pusht-frames`). `--all` runs everything.
 
-If you pass `--mujoco` (or `--all`) to `install.sh`, it will install Mujoco 2.1.0 under `~/.mujoco` and add the appropriate entries to `LD_LIBRARY_PATH`. You can also install Mujoco manually with:
-
+**2. Data and checkpoints**
 ```bash
-mkdir -p ~/.mujoco
-wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz -P ~/.mujoco/
-cd ~/.mujoco
-tar -xzvf mujoco210-linux-x86_64.tar.gz
-```
-
-Append the following lines to your `~/.bashrc` (adjust the username and NVIDIA path as needed):
-
-```bash
-# Mujoco path
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/<username>/.mujoco/mujoco210/bin
-
-# NVIDIA library path (if using NVIDIA GPUs)
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib/nvidia
-```
-
-Reload your shell configuration:
-
-```bash
-source ~/.bashrc
-```
-
-#### Notes
-
-- **GPU drivers**: ensure NVIDIA drivers are correctly installed for GPU-accelerated simulations.
-- **Debugging paths**: if Mujoco fails to load, double-check `LD_LIBRARY_PATH`.
-
-## Datasets
-
-If you pass `--dataset-dir /path/to/base` and `--download-datasets` (or `--all`) to `install.sh`, it will:
-
-- set `DATASET_DIR=<base>/datasets` (persisted in your shell config),
-- download missing datasets from OSF,
-- and place pre-trained model directories under `<base>/outputs` (where `plan.py` loads from via `ckpt_base_path/outputs`).
-
-Datasets for the supported tasks can also be downloaded directly from a public OSF bucket:  
-`https://osf.io/bmw48/?view_only=a56a296ce3b24cceaf408383a175ce28`
-
-If you prefer, you can use `install.sh` just to set up `DATASET_DIR` and optionally download datasets:
-
-```bash
-# From the repository root
-./install.sh --dataset-dir /path/to/base
-
-# Or to download and extract datasets automatically:
 ./install.sh --dataset-dir /path/to/base --download-datasets
 ```
+Datasets go to `<base>/datasets` and pretrained world models to `<base>/outputs`, and
+`DATASET_DIR=<base>/datasets` is written to your shell profile. The DINO-WM datasets come from the
+[OSF bucket](https://osf.io/bmw48/) published with DINO-WM. LeWM checkpoints are bundled, so no
+separate install is needed for Reacher and Cube.
 
-After setup, `DATASET_DIR` points to `<base>/datasets`. Inside that folder you should see:
-
-```text
-<base>/datasets/
-├── point_maze
-├── pusht          # raw videos in pusht/train/obses, pusht/val/obses; run --extract-pusht-frames to extract frames
-└── wall_single
+**3. Check the install**
+```bash
+python planning/test_mcmc_kernels.py
 ```
 
-Pre-trained model directories (if downloaded) are stored under `<base>/outputs/`. The install script sets `CKPT_BASE_PATH=<base>` in your shell config, which `plan.py` uses by default; models load from `<base>/outputs/<model_name>/`. If you set up manually, export `CKPT_BASE_PATH` or override `ckpt_base_path` in `conf/plan_grasp.yaml`.
+> [!IMPORTANT]
+> `MUJOCO_GL` differs by environment. Reacher and Cube need `MUJOCO_GL=egl`. Point maze, Push-T and
+> Wall need it **unset** with a display available (`export DISPLAY=:0`); setting it to `egl` there
+> produces silently wrong renders. The sweep scripts in `writeup/` set this per environment.
 
-## Train a world model
+---
 
-Training follows the existing configuration structure. From the repo root:
+## Quick Start
 
 ```bash
-conda activate grasp
-python train.py --config-name train.yaml env=point_maze frameskip=5 num_hist=3
+./run.sh pointmaze ours 10                        # our planner, Point maze, horizon 10
+./run.sh pointmaze ours-l2 10                     # the same cell under the plain L2 cost
+./run.sh pointmaze mppi 10                        # a baseline at the same budget
+./run.sh pointmaze ours 10 5 planner.kernel=mala  # 5 trials, MALA propagation kernel
 ```
 
-You can control where outputs are written via `ckpt_base_path` in `conf/train.yaml`. Checkpoints will be saved under `${ckpt_base_path}/outputs`.
-
-## Plan with GRASP
-
-Once you have a trained world model, you can run GRASP-based planning with:
+`./run.sh <env> <planner> <horizon> [n_evals]` sets the three things that are easy to get wrong by
+hand and gives every planner the same twelve candidates and 150 iterations. `MUJOCO_GL` must be
+`egl` for Reacher and Cube and **unset** for Point maze, Push-T and Wall, where `egl` renders
+silently wrong frames. `goal_source` differs per environment. The rollout chunk caps peak memory,
+since the DINO-WM rollout kept for autograd grows superlinearly with the horizon and runs a 16 GB
+card out of memory at `H=15` without it. Anything after the trial count is passed to Hydra
+untouched. The call it builds for the line above is
 
 ```bash
-conda activate grasp
-python plan.py model_name=<model_name> n_evals=5 planner=grasp goal_H=5 goal_source='random_state' planner.opt_steps=30
+python plan.py model_name=point_maze planner=emsmc_pointmaze goal_H=10 \
+  goal_source=random_state n_evals=1 save_images=False planner.num_particles=12 \
+  planner.opt_steps=150 planner.eval_every=1 planner.lambda_v=auto planner.eval_chunk=4
 ```
 
-- `model_name` should match the checkpoint directory name under `<ckpt_base_path>/outputs`.
-- `goal_H` controls how far away the sampled goal is (in steps).
-- Other planners (CEM, gradient descent variants, LATCO, etc.) are available as baselines via `planner=<name>`.
+Any config field can be overridden with Hydra's dotted syntax. Results go to
+`plan_outputs/<timestamp>_<model_name>_gH<goal_H>/`, or to `$GRASP_RESULTS_DIR` if it is set, which
+is how the sweeps collect one directory per seed.
 
-For more advanced configurations (e.g., custom output directories, SLURM runs, or sweeps), see:
+| Environment | `model_name` | `planner` | `goal_source` | World model |
+| :--- | :--- | :--- | :--- | :--- |
+| Reacher | `lewm_reacher` | `emsmc_reacher` | `random_state` | LeWM |
+| Point maze | `point_maze` | `emsmc_pointmaze` | `random_state` | DINO-WM |
+| Wall | `wall_single` | `emsmc_wall` | `random_state` | DINO-WM |
+| Push-T | `pusht` | `emsmc_pusht` | `dset` | DINO-WM |
+| Cube | `lewm_cube` | `emsmc_cube` | `dset` | LeWM |
 
-- `conf/plan_grasp.yaml` (default GRASP planning config used by `plan.py`)
-- `conf/plan.yaml` (generic planning config)
-- `conf/planner/grasp.yaml` (GRASP hyperparameters)
+---
 
-## Analyze results
+## Reproducing the Paper
 
-Analysis utilities live under `analysis/`:
-
-- `analysis/experiment_results.py`: loading and aggregating `logs.json` outputs from `plan.py`.
-- `analysis/visualize_results.py`: scripts for plotting GRASP vs baseline planners, sweeping over goal horizon, or analyzing GRASP hyperparameter sweeps (stored under `grasp` directory names in the baselines layout).
-
-The tests in `tests/test_experiment_results.py` exercise these utilities against fixtures in `tests/fixtures/` and baselines stored under `baselines/`.
-
-## Repository overview
-
-This repository is organized around three main components:
-
-- **World model training**: `train.py` with configs under `conf/train*.yaml` and model/env configs in `conf/encoder`, `conf/decoder`, etc.
-- **Planning**: `plan.py` together with planner configs in `conf/planner` (notably `conf/planner/grasp.yaml`) and environment configs in `conf/env`.
-- **Analysis and baselines**: utilities under `analysis/` and pre-computed baselines under `baselines/`.
-
-Key top-level directories:
-
-- `planning/`: planning algorithms and evaluators (including the GRASP planner in `planning/grasp.py`).
-- `env/`: environment registrations and wrappers for tasks such as point_maze, wall, pusht, ballnav, and random_mlp.
-- `models/`: visual world models and component encoders/decoders built on top of pre-trained vision backbones.
-- `metrics/`: evaluation metrics (e.g., LPIPS in `metrics/lpipsPyTorch`) and image-based metrics.
-- `analysis/`: helpers for loading and aggregating experiment results.
-- `conf/`: Hydra configuration tree for training, planning, environments, and model components.
-- `tests/`: pytest-based tests for planners and experiment result loading.
-- `baselines/`: stored `logs.json` files for baseline and ablation experiments.
-- `distributed_fn/`: utilities for launching distributed training jobs.
-
-## Typical workflows
-
-- **Use a pre-trained world model (no retraining)**
-  - Run `install.sh` with `--dataset-dir` and `--download-datasets` (or `--all`) to download datasets and pre-trained models for `point_maze`, `wall_single`, and `pusht`.
-  - Then go directly to planning:
-    ```bash
-    conda activate grasp
-    python plan.py model_name=pusht n_evals=5 planner=grasp goal_H=5 goal_source='random_state' planner.opt_steps=30
-    ```
-
-- **OR: Train a world model**
-  - If you want to train from scratch or fine-tune:
-    ```bash
-    conda activate grasp
-    python train.py --config-name train.yaml env=point_maze frameskip=5 num_hist=3
-    ```
-  - You can then pass your new `model_name` to `plan.py` as above.
-
-- **Plan with a trained world model using GRASP**
-  - After training or choosing a pre-trained checkpoint, run:
-    ```bash
-    conda activate grasp
-    python plan.py model_name=<model_name> n_evals=5 planner=grasp goal_H=5 goal_source='random_state' planner.opt_steps=30
-    ```
-
-- **Analyze experiment results**
-  - Use `analysis/experiment_results.py` and `analysis/visualize_results.py` to aggregate and plot GRASP vs baseline performance.
-
-
-
-## LeWM (JEPA) World Models: Reacher & Cube
-
-GRASP also supports **LeWM** pretrained world models for DMControl and OGBench tasks. This uses the [LeWorldModel](https://github.com/lucas-maes/le-wm) JEPA architecture with pretrained checkpoints from HuggingFace.
-
-### Prerequisites
-
-No extra packages are required beyond the base GRASP dependencies. The LeWM model
-classes are bundled in `models/lewm_modules.py` (extracted from stable-worldmodel)
-so there is no need to install `stable-worldmodel`.
-
-On headless GPU nodes (e.g., SLURM clusters), set:
+Each cell of the main table is 100 seeds of one `plan.py` call. The launchers run them over the
+free GPUs, claim each seed with a lock directory so several workers can share a sweep, and skip any
+seed whose `result.txt` already exists, so a run can be interrupted and resumed.
 
 ```bash
-export MUJOCO_GL=egl
+# the main table: four environments, three horizons, 100 seeds
+GPUS="0 1" ENVS="pointmaze wall pusht reacher" bash writeup/launch_emsmc_table.sh
+
+# the baselines at the same budget
+bash writeup/launch_baselines_then_ablation.sh
+
+# the roadmap cost applied to the baselines
+bash writeup/run_pde_baselines.sh
 ```
 
-### Directory Layout
+Then build the tables and figures from the finished runs:
 
-LeWM checkpoints and datasets follow the same layout as DINO-WM models:
+| Output | Command |
+| :--- | :--- |
+| Main table | `python writeup/make_equal_particle_tables.py` |
+| Ablation tables | `python writeup/make_ablation_tables.py` |
+| Cube table | `python writeup/make_cube_table.py` |
+| Confidence intervals, paired tests | `python writeup/make_paired_table.py` |
+| Success against iteration | `python figs/fig_success_grid.py` |
+| Paired per-seed summary | `python figs/fig_paired_summary.py` |
+| Kernel comparison | `python figs/fig_kernels.py` |
+| Roadmap cost on the baselines | `python writeup/pde_baseline_stats.py && python figs/fig_pde_transfer.py` |
+| This README's summary figure | `python figs/fig_readme_summary.py` |
 
-```text
-<ckpt_base_path>/
-└── outputs/
-    ├── lewm_reacher/          # LeWM reacher checkpoint
-    │   ├── config.json        # Model architecture config (from HuggingFace)
-    │   └── weights.pt         # Pretrained weights
-    └── lewm_cube/             # LeWM cube checkpoint
-        ├── config.json
-        └── weights.pt
+`writeup/equal_particle_stats.py` is the single source of per-seed outcomes that the tables read,
+so a number can always be traced back to the seed directory it came from.
 
-$DATASET_DIR/
-├── dmc/
-│   └── reacher.h5             # DMControl reacher dataset (HDF5)
-└── ogbench/
-    └── cube_single_expert.h5  # OGBench cube dataset (HDF5)
-```
+---
 
-### Environment Variables
+## Planners
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `DATASET_DIR` | Root directory for all datasets | `/scratch/gilbreth/hviswan/grasp/data` |
-| `ckpt_base_path` | Root for checkpoints (set in `conf/plan_grasp.yaml` or CLI) | `/scratch/gilbreth/hviswan/grasp/checkpoints` |
-| `MUJOCO_GL` | MuJoCo rendering backend for headless nodes | `egl` |
-| `TORCH_HOME` | Torch hub cache (optional, to avoid home dir quota) | `/depot/bera89/data/hviswan/.cache/torch` |
+| `./run.sh` | `planner=` | Class | Objective |
+| :--- | :--- | :--- | :--- |
+| `ours`, `ours-l2` | `emsmc_<env>` | `planning/em_smc.py` | ours, Algorithm 1 |
+| | `fk_<env>` | `planning/fk_planner.py` | earlier Feynman-Kac variant |
+| `gd` | `gd`, `gd_cube` | `planning/gd.py` | gradient descent on the terminal latent distance (DINO-WM) |
+| `grasp` | `grasp` | `planning/grasp.py` | lifted virtual states with dynamics-consistency penalties |
+| `cem` | `cem` | `planning/cem.py` | cross-entropy method |
+| `mppi` | `mppi` | `planning/mppi.py` | model-predictive path integral |
+| | `mpc_cem` | `planning/mpc.py` | receding-horizon CEM |
 
-### Setting Up Checkpoints
+Each baseline optimizes the objective its own authors report. The roadmap cost can be switched on
+for `gd`, `cem` and `mppi` with `planner.lambda_v`, which is the study behind the appendix figure on
+whether the cost transfers.
 
-Download pretrained LeWM checkpoints from HuggingFace and place them in the expected directory:
-
-```bash
-# Reacher
-mkdir -p $CKPT_BASE_PATH/outputs/lewm_reacher
-huggingface-cli download quentinll/lewm-reacher --local-dir $CKPT_BASE_PATH/outputs/lewm_reacher
-
-# Cube
-mkdir -p $CKPT_BASE_PATH/outputs/lewm_cube
-huggingface-cli download quentinll/lewm-cube --local-dir $CKPT_BASE_PATH/outputs/lewm_cube
-```
-
-Each downloaded folder should contain `config.json` and `weights.pt`.
-
-### Setting Up Datasets
-
-Download datasets from HuggingFace and place the `.h5` files:
-
-```bash
-mkdir -p $DATASET_DIR/dmc
-# Download reacher dataset and place as:
-# $DATASET_DIR/dmc/reacher.h5
-
-mkdir -p $DATASET_DIR/ogbench
-# Download cube dataset and place as:
-# $DATASET_DIR/ogbench/cube_single_expert.h5
-```
-
-Datasets are available from the [LeWM HuggingFace collection](https://huggingface.co/collections/quentinll/lewm).
-
-### Running Planning
-
-```bash
-# Reacher with GRASP planner
-python plan.py model_name=lewm_reacher planner=grasp goal_H=5 goal_source=dset n_evals=5
-
-# Reacher with CEM
-python plan.py model_name=lewm_reacher planner=cem goal_H=5 goal_source=dset
-
-# Cube with GRASP
-python plan.py model_name=lewm_cube planner=grasp goal_H=5 goal_source=dset
-
-# Override checkpoint path from CLI
-python plan.py model_name=lewm_reacher planner=grasp ckpt_base_path=/my/custom/path
-```
-
-The `model_name` must start with `lewm_` (e.g., `lewm_reacher`, `lewm_cube`). This triggers the LeWM loading path, which:
-
-1. Reads the env config from `conf/env/<name>.yaml` (e.g., `conf/env/reacher.yaml`)
-2. Loads the JEPA checkpoint from `<ckpt_base_path>/outputs/<lewm_checkpoint>/`
-3. Wraps it in `LeWMWorldModel` (in `models/lewm_world_model.py`) to match the planner interface
-4. Loads the HDF5 dataset from `$DATASET_DIR/dmc/<name>.h5`
-
-### Config Files
-
-| Config | Purpose |
-|--------|---------|
-| `conf/env/reacher.yaml` | Reacher env, dataset path, model params (action_dim=2) |
-| `conf/env/cube.yaml` | Cube env, dataset path, model params (action_dim=10) |
-| `conf/planner/grasp.yaml` | GRASP hyperparameters |
-| `conf/planner/cem.yaml` | CEM hyperparameters |
+---
 
 ## Citation
 
-```text
-@article{psenka2026grasp,
-      title={Parallel Stochastic Gradient-Based Planning for World Models},
-      author={Michael Psenka and Michael Rabbat and Aditi Krishnapriyan and Yann LeCun and Amir Bar},
-      year={2026},
-      eprint={2602.00475},
-      archivePrefix={arXiv},
-      primaryClass={cs.LG},
-      url={https://arxiv.org/abs/2602.00475},
+```bibtex
+@article{viswanath2026latentsmc,
+  title   = {Latent Space Planning with Sequential Monte Carlo},
+  author  = {Viswanath, Hrishikesh and Ghosh, Anindita and
+             Bhattacharya, Uttaran and Bera, Aniket},
+  journal = {arXiv preprint},
+  year    = {2026}
 }
 ```
+
+## Acknowledgments
+
+This codebase is a derivative of [DINO-WM](https://dino-wm.github.io/)
+([paper](https://arxiv.org/abs/2411.04983)), and reuses its world-model training, datasets and
+environment wrappers. The LeWM/JEPA path is built on
+[stable-worldmodel](https://github.com/michael-psenka/le-wm-grasp). The GRASP baseline is
+[Psenka et al.](https://www.michaelpsenka.io/grasp/). The MCMC kernels are ported from
+[blackjax](https://github.com/blackjax-devs/blackjax) and verified against it. The Jarzynski-adjusted
+Langevin scheme and the incremental weights follow Cuin et al. If you use this repository, please
+also cite DINO-WM.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
