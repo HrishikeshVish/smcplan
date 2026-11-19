@@ -10,6 +10,7 @@
 #   bash scripts/sweep.sh ablations       # appendix ablations and sensitivity
 #   bash scripts/sweep.sh kernels         # MALA, RWM, HMC against JALA
 #   bash scripts/sweep.sh pde-baselines   # the roadmap cost added to GD, CEM, MPPI
+#   bash scripts/sweep.sh learned         # LeFlow and GC-IDM, which train a network first
 #
 # GPUS picks the cards (default "0 1"); ENVS narrows table1. MUJOCO_GL is set per
 # environment inside the launchers: egl for Reacher and Cube, unset elsewhere.
@@ -24,5 +25,11 @@ case $1 in
   ablations)     bash writeup/run_ablations.sh ;;
   kernels)       bash writeup/run_emsmc_kernels.sh ;;
   pde-baselines) bash writeup/run_pde_baselines.sh ;;
+  # LeFlow and GC-IDM train on the offline data first; both steps need
+  # third_party/ checked out (scripts/baselines.sh).
+  learned)       bash writeup/baselines/extract.sh
+                 bash writeup/baselines/train_leflow.sh
+                 bash writeup/baselines/train_gcidm.sh
+                 bash writeup/baselines/run_learned.sh ;;
   *) echo "unknown sweep $1"; exit 1 ;;
 esac

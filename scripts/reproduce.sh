@@ -7,9 +7,10 @@
 #
 #   bash scripts/reproduce.sh table1       # Tab. 1, main planner comparison
 #   bash scripts/reproduce.sh cube         # Tab. 4, cube under LeFlow's protocol
-#   bash scripts/reproduce.sh ablations    # Tab. 6-8, M-step, budget, SMC, sensitivity
-#   bash scripts/reproduce.sh ci           # Tab. 11, Wilson intervals and paired McNemar
-#   bash scripts/reproduce.sh figures      # Fig. 4, 5, 9 and the rollout strips
+#   bash scripts/reproduce.sh learned      # LeFlow and GC-IDM, the planners that train a network
+#   bash scripts/reproduce.sh ablations    # M-step, budget, SMC and sensitivity
+#   bash scripts/reproduce.sh ci           # Wilson intervals and paired McNemar
+#   bash scripts/reproduce.sh figures      # every figure the paper includes
 #   bash scripts/reproduce.sh all
 #
 # Tables land in OUT_DIR (this repo by default) as the .tex files the paper
@@ -23,16 +24,22 @@ one() {
   case $1 in
     table1)    "$PYTHON" writeup/make_equal_particle_tables.py ;;
     cube)      "$PYTHON" writeup/make_cube_table.py ;;
+    learned)   "$PYTHON" writeup/make_learned_table.py ;;
     ablations) "$PYTHON" writeup/make_ablation_tables.py ;;
     ci)        "$PYTHON" writeup/make_paired_table.py ;;
     figures)
-      "$PYTHON" figs/fig_success_grid.py
-      "$PYTHON" figs/fig_paired_summary.py
-      "$PYTHON" figs/fig_kernels.py
+      "$PYTHON" figs/fig_teaser.py              # Fig. 1
+      "$PYTHON" figs/fig_success_curves.py      # Fig. 4 panels and legend, and the appendix curves
+      "$PYTHON" figs/fig_paired_summary.py      # Fig. 5
+      "$PYTHON" figs/fig_cost_structures.py     # Fig. 9, the two cost structures
+      "$PYTHON" figs/fig_paired.py              # appendix, per-environment paired panels
+      "$PYTHON" figs/fig_kernels.py             # appendix, propagation kernels
+      "$PYTHON" figs/fig_abl_knobs.py           # appendix, sensitivity
+      "$PYTHON" figs/fig_particles.py           # appendix, particle count
       "$PYTHON" writeup/pde_baseline_stats.py && "$PYTHON" figs/fig_pde_transfer.py
       for e in pointmaze pusht cube; do "$PYTHON" figs/frame_strip.py "$e"; done ;;
     *) echo "unknown target $1"; exit 1 ;;
   esac
 }
 
-if [ "$1" = all ]; then for t in table1 cube ablations ci figures; do one "$t"; done; else one "$1"; fi
+if [ "$1" = all ]; then for t in table1 cube learned ablations ci figures; do one "$t"; done; else one "$1"; fi

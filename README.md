@@ -336,9 +336,10 @@ whose `result.txt` exists, so a sweep can be interrupted and resumed. `GPUS` pic
 | :--- | :--- | :--- |
 | Tab. 1, the main planner comparison | `bash scripts/sweep.sh table1` and `bash scripts/sweep.sh baselines` | `bash scripts/reproduce.sh table1` |
 | Tab. 4, Cube under LeFlow's protocol | `bash scripts/sweep.sh cube` | `bash scripts/reproduce.sh cube` |
+| LeFlow and GC-IDM, the planners that train a network | `bash scripts/sweep.sh learned` | `bash scripts/reproduce.sh learned` |
 | Tab. 6-8, M-step, budget, SMC and sensitivity | `bash scripts/sweep.sh ablations` | `bash scripts/reproduce.sh ablations` |
 | Tab. 11, Wilson intervals and paired McNemar | covered by the sweeps above | `bash scripts/reproduce.sh ci` |
-| Fig. 4, 5 and 9, and the rollout strips | covered by the sweeps above | `bash scripts/reproduce.sh figures` |
+| Every figure the paper includes | covered by the sweeps above | `bash scripts/reproduce.sh figures` |
 | The roadmap cost on the baselines | `bash scripts/sweep.sh pde-baselines` | included in `reproduce.sh figures` |
 | Kernel comparison, JALA against MALA, RWM and HMC | `bash scripts/sweep.sh kernels` | included in `reproduce.sh figures` |
 
@@ -363,7 +364,8 @@ bash scripts/baselines.sh LeFlow      # or one, by directory name
 ```
 
 `third_party/README.md` lists what each one is for. `LeFlow` and `GCIDM` are pinned at the commits
-the paper's runs used; the other four are reference points.
+the paper's runs used, and `scripts/sweep.sh learned` needs both checked out, since it trains them
+on the offline data before planning with them. The other four are reference points.
 
 ---
 
