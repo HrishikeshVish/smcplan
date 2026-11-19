@@ -35,7 +35,7 @@ action_clamp: 0
 # VERIFY dmin in the planner log before trusting any V number: the old reacher
 # buffer was encoded without the ImageNet transform and sat ~161 scaled units
 # from every query, making V pure noise with nothing crashing.
-replay_buffer_path: /home/hviswan/Documents/grasp/latent_buffers/wall_buffer.pt
+replay_buffer_path: ${oc.env:GRASP_BUFFER_DIR,${hydra:runtime.cwd}/latent_buffers}/wall_buffer.pt
 latent_key: proprio
 solver_mode: heat
 rw_steps: 20

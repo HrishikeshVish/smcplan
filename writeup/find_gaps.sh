@@ -7,7 +7,7 @@
 # string "OutOfMemoryError" -- but PyTorch also raises
 # "torch.AcceleratorError: CUDA error: out of memory", which that test misses.
 # Failures write no result.txt, so re-running the sweep fills exactly the gaps.
-cd /home/hviswan/Documents/grasp
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
 total=0
 for arm in sweep/pusht/*_H*/ sweep_fk/table/wall/*_H*/ sweep_pusht_h25/*/; do
   [ -d "$arm" ] || continue

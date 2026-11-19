@@ -1,6 +1,6 @@
 #!/bin/bash
 source ~/miniconda3/etc/profile.d/conda.sh; conda activate grasp
-cd /home/hviswan/Documents/grasp
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
 export CUDA_VISIBLE_DEVICES=${GPU:-0}
 while read env k rule c; do
   python writeup/calib_surrogate.py $env $k $rule $c 30 2>&1 | grep -E "^==|rho=|Error|Traceback"

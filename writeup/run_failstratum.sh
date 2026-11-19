@@ -17,10 +17,10 @@
 # run LAST so the H5/H10 cells land first if the H15 pairing is later found to
 # mismatch.
 source ~/miniconda3/etc/profile.d/conda.sh; conda activate grasp
-cd /home/hviswan/Documents/grasp
-export DATASET_DIR=/home/hviswan/Documents/grasp/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
+export DATASET_DIR=$PWD/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 ROOT=$PWD/sweep_aft/failstratum
-CK=ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints
+CK=ckpt_base_path=$PWD/checkpoints
 
 seeds () { python3 -c "import json;print(' '.join(map(str,json.load(open('writeup/fail_seeds.json'))['$1'][:$2])))"; }
 

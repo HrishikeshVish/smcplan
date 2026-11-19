@@ -12,8 +12,8 @@
 # alongside them. The prediction is that freeze_tilt=false is WORSE; if it is
 # not, the paragraph in the appendix needs rewriting, not the figure.
 source ~/miniconda3/etc/profile.d/conda.sh; conda activate grasp
-cd /home/hviswan/Documents/grasp
-export DATASET_DIR=/home/hviswan/Documents/grasp/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
+export DATASET_DIR=$PWD/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 unset MUJOCO_GL; export DISPLAY=:2
 SEEDS="1 6 7 14 20 25 33 38 44 45 54 60 65 68 73 79 84 93 99 100"
 ROOT=$PWD/sweep_aft/abl_freeze
@@ -27,7 +27,7 @@ for v in false true; do
       model_name=point_maze planner=fk_pointmaze goal_H=10 goal_source=random_state \
       planner.opt_steps=150 planner.eval_every=1 planner.num_particles=3 \
       planner.num_smooth_samples=1 ++planner.freeze_tilt=$v \
-      ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints > $OUT/run.log 2>&1
+      ckpt_base_path=$PWD/checkpoints > $OUT/run.log 2>&1
     if grep -q "Success rate:" $OUT/run.log; then
       ok=0; grep -q "Success rate:  1.0" $OUT/run.log && ok=1
       echo "$ok $(tail -1 $OUT/seed_success_log.txt 2>/dev/null | awk '{print $5}')" > $OUT/result.txt

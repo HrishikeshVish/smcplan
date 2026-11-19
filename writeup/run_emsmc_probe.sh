@@ -9,8 +9,8 @@
 #   score  score only -- MPPI with MCMC rejuvenation, no world-model gradient
 # ARM and GPU come from the environment.
 source ~/miniconda3/etc/profile.d/conda.sh; conda activate grasp
-cd /home/hviswan/Documents/grasp
-export DATASET_DIR=/home/hviswan/Documents/grasp/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
+export DATASET_DIR=$PWD/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 unset MUJOCO_GL; export DISPLAY=:0
 ARM=${ARM:-both}
 GPU=${GPU:-1}
@@ -18,7 +18,7 @@ GPU=${GPU:-1}
 # (matching fk_pointmaze's num_smooth_samples=1 in the baseline sweep).
 ARGS=${ARGS:-"planner.m_step=$ARM planner.m_smooth_samples=1"}
 ROOT=$PWD/sweep_emsmc/pointmaze_H5/$ARM
-CK=ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints
+CK=ckpt_base_path=$PWD/checkpoints
 SEEDS=${SEEDS:-"1 10 100 11 12 13 14 15 16 17 18 19 2 20 21 22 23 24 25 26"}
 for s in $SEEDS; do
   OUT=$ROOT/seed_$s

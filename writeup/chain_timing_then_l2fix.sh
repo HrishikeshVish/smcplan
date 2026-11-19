@@ -3,7 +3,7 @@
 # the fixed-setting L2 arm (l2fix = pdefix with lambda_v=0) for the PDE-vs-L2
 # figure: 3 staggered GPU0 workers on the grid, then cube, then a mop-up pass for
 # seeds whose claim was left by an OOM/crash. GPU1 is reserved: never used here.
-cd /home/hviswan/Documents/grasp
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
 # (timing benchmark stopped 2026-10-07 at the user's request: wall clock is not a fair unit across planners; script removed)
 for w in 1 2 3; do
   GPU=0 ARM=l2fix LAMBDA_V=0 NEED_MIB=7000 bash writeup/run_emsmc_final.sh >> sweep_emsmc/table/l2fix_w$w.log 2>&1 &

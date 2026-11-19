@@ -22,12 +22,12 @@
 # beta_max=10.0; reacher needs MUJOCO_GL=egl while the DINO-WM envs need an X
 # display.
 source ~/miniconda3/etc/profile.d/conda.sh; conda activate grasp
-cd /home/hviswan/Documents/grasp
-export DATASET_DIR=/home/hviswan/Documents/grasp/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
+export DATASET_DIR=$PWD/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 ENV=${ENV:?set ENV to wall|reacher|cube}
 KERNELS=${KERNELS:-"ula hmcP mala rwm"}
 SEEDS=${SEEDS:-"1 2 3 4 5 6 7 8"}
-CK=ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints
+CK=ckpt_base_path=$PWD/checkpoints
 case $ENV in
   wall)    MODEL="model_name=wall_single planner=emsmc_wall goal_H=10 goal_source=random_state"; GL=none;;
   reacher) MODEL="model_name=lewm_reacher planner=emsmc_reacher goal_H=10 goal_source=random_state"; GL=egl;;

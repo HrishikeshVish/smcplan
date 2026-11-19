@@ -20,10 +20,10 @@
 # at every planner iteration; ESS is recomputed from w when plotting. One file
 # per planning call, so trace_call000.npz is the cold start.
 source ~/miniconda3/etc/profile.d/conda.sh; conda activate grasp
-cd /home/hviswan/Documents/grasp
-export DATASET_DIR=/home/hviswan/Documents/grasp/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
+export DATASET_DIR=$PWD/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 ROOT=$PWD/sweep_aft/fk_dumps
-CK=ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints
+CK=ckpt_base_path=$PWD/checkpoints
 
 run () {  # env seed gl args...
   local env=$1 s=$2 gl=$3; shift 3

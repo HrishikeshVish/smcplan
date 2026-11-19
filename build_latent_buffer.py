@@ -23,7 +23,10 @@ from pathlib import Path
 from tqdm import tqdm
 from omegaconf import OmegaConf
 
-os.environ.setdefault("DATASET_DIR", "/scratch/gilbreth/hviswan/grasp/data")
+REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+BUFFER_DIR = os.environ.get("GRASP_BUFFER_DIR", os.path.join(REPO_ROOT, "latent_buffers"))
+CKPT_BASE = os.environ.get("GRASP_CKPT_BASE", os.path.join(REPO_ROOT, "checkpoints"))
+os.environ.setdefault("DATASET_DIR", os.path.join(REPO_ROOT, "data"))
 
 
 class FullEpisodeView(torch.utils.data.Dataset):
@@ -129,7 +132,7 @@ def main():
     parser = argparse.ArgumentParser(description="Build latent replay buffer for HJB solver")
     parser.add_argument("--env", required=True, help="Environment: pointmaze, pusht, wall_single, lewm_reacher, lewm_cube")
     parser.add_argument("--checkpoint-dir", default=None, help="DINO-WM checkpoint dir (ignored for LeWM)")
-    parser.add_argument("--ckpt-base-path", default="/scratch/gilbreth/hviswan/grasp/checkpoints", help="LeWM checkpoint base path")
+    parser.add_argument("--ckpt-base-path", default=CKPT_BASE, help="LeWM checkpoint base path (default: $GRASP_CKPT_BASE or <repo>/checkpoints)")
     parser.add_argument("--output-path", default=None, help="Output .pt path (auto-generated if not set)")
     parser.add_argument("--max-episodes", type=int, default=None, help="Max episodes to encode (default: all)")
     parser.add_argument("--latent-key", default="proprio", help="Latent key for DINO-WM: proprio or visual")
@@ -141,7 +144,7 @@ def main():
     is_lewm = env_name.startswith("lewm_")
 
     if args.output_path is None:
-        args.output_path = f"/scratch/gilbreth/hviswan/grasp/latent_buffers/{env_name}_buffer.pt"
+        args.output_path = os.path.join(BUFFER_DIR, f"{env_name}_buffer.pt")
 
     if is_lewm:
         from plan import load_lewm_model

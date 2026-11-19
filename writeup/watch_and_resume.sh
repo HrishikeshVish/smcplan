@@ -9,7 +9,7 @@
 #
 # Requires the card to hold enough free memory for a sustained stretch, so we
 # don't start into a brief dip between someone else's allocations.
-cd /home/hviswan/Documents/grasp
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
 
 NEED_MIB=10000        # headroom for a run plus slack
 STABLE_CHECKS=10      # consecutive passes required

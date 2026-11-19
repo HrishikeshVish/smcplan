@@ -7,8 +7,8 @@
 #   $1  stream name   $2  hydra override applied to every run in the stream
 #   remaining args: the arm values to sweep
 source ~/miniconda3/etc/profile.d/conda.sh; conda activate grasp
-cd /home/hviswan/Documents/grasp
-export DATASET_DIR=/home/hviswan/Documents/grasp/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
+export DATASET_DIR=$PWD/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 unset MUJOCO_GL; export DISPLAY=:2
 NAME=$1; KNOB=$2; shift 2
 SEEDS="1 6 7 14 20 25 33 38 44 45 54 60 65 68 73 79 84 93 99 100"
@@ -23,7 +23,7 @@ for v in "$@"; do
       model_name=point_maze planner=fk_pointmaze goal_H=10 goal_source=random_state \
       planner.opt_steps=150 planner.eval_every=1 planner.num_particles=3 \
       planner.num_smooth_samples=1 ++planner.$KNOB=$v \
-      ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints > $OUT/run.log 2>&1
+      ckpt_base_path=$PWD/checkpoints > $OUT/run.log 2>&1
     # Only record a result if the run actually reported one. Writing result.txt
     # unconditionally made OOM crashes look like recorded failures, and the
     # resume guard above then skipped them on the next pass.

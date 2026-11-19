@@ -3,7 +3,7 @@
 # AFT does not). Stops at the first failing rung after one confirming rerun
 # (FK is nondeterministic at a fixed seed).
 source ~/miniconda3/etc/profile.d/conda.sh; conda activate grasp
-cd /home/hviswan/Documents/grasp
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
 export MUJOCO_GL=egl; unset DISPLAY
 SEED=${SEED:-2}
 ROOT=$PWD/sweep_aft/ladder_s$SEED
@@ -34,7 +34,7 @@ run () {   # name try
   CUDA_VISIBLE_DEVICES=${GPU:-1} GRASP_RESULTS_DIR=$OUT timeout 3600 python plan.py model_name=lewm_reacher \
     n_evals=1 planner=fk goal_H=10 goal_source=random_state seed=$SEED save_images=False \
     planner.opt_steps=150 planner.eval_every=1 planner.num_particles=8 planner.num_smooth_samples=8 \
-    ${RUNG[$1]} ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints > $OUT/run.log 2>&1
+    ${RUNG[$1]} ckpt_base_path=$PWD/checkpoints > $OUT/run.log 2>&1
   local ok=0; grep -q "Success rate:  1.0" $OUT/run.log && ok=1
   grep -q "Success rate:" $OUT/run.log || { echo "[$1 try$2] CRASHED"; tail -3 $OUT/run.log; return 2; }
   echo "[$1 try$2] success=$ok exit=$(tail -1 $OUT/seed_success_log.txt | awk '{print $5}')"

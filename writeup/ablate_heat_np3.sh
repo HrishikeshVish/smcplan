@@ -37,13 +37,13 @@
 # comparisons, on the seeds where both arms succeed.
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate grasp
-cd /home/hviswan/Documents/grasp
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
 GPU=${GPU:-1}
-export CUDA_VISIBLE_DEVICES=$GPU DATASET_DIR=/home/hviswan/Documents/grasp/data
+export CUDA_VISIBLE_DEVICES=$GPU DATASET_DIR=$PWD/data
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 unset MUJOCO_GL; export DISPLAY=:2
 
-ROOT=${ROOT:-/home/hviswan/Documents/grasp/sweep_fk/ablate_np3}
+ROOT=${ROOT:-$PWD/sweep_fk/ablate_np3}
 H=${H:-10}
 NP=${NP:-3}
 STEPS=150
@@ -80,7 +80,7 @@ for mode in none objective_raw; do
           planner.opt_steps=$STEPS planner.eval_every=1 \
           planner.num_particles=$NP planner.num_smooth_samples=1 \
           planner.v_null=$mode \
-          ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints \
+          ckpt_base_path=$PWD/checkpoints \
           > "$OUT/run.log" 2>&1
       dt=$(( $(date +%s) - t0 ))
       if grep -q "Success rate:" "$OUT/run.log" 2>/dev/null; then

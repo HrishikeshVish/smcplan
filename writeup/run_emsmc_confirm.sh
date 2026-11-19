@@ -8,12 +8,12 @@
 #
 # ARM (label), GPU, ARGS (planner overrides), HALF (1|2, to split across GPUs).
 source ~/miniconda3/etc/profile.d/conda.sh; conda activate grasp
-cd /home/hviswan/Documents/grasp
-export DATASET_DIR=/home/hviswan/Documents/grasp/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
+export DATASET_DIR=$PWD/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 unset MUJOCO_GL; export DISPLAY=:0
 ARM=${ARM:?set ARM}; GPU=${GPU:-0}; ARGS=${ARGS:?set ARGS}
 ROOT=$PWD/sweep_emsmc/pointmaze_H5_100/$ARM
-CK=ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints
+CK=ckpt_base_path=$PWD/checkpoints
 ALL=$(ls -d sweep_fk/table/pointmaze/fk_H5/seed_* | sed 's/.*seed_//' | sort -n)
 N=$(echo "$ALL" | wc -l)
 case "${HALF:-0}" in

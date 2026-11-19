@@ -28,7 +28,7 @@ action_clamp: 0
 # graph_n_nodes subsamples that to 55000 (gd.py:89), matching reacher's node
 # count so graph density is comparable across the two rows; pointmaze cannot
 # match it because its dataset is 90% incomplete (3800 transitions).
-replay_buffer_path: /home/hviswan/Documents/grasp/latent_buffers/pusht_offline_replay_buffer.pt
+replay_buffer_path: ${oc.env:GRASP_BUFFER_DIR,${hydra:runtime.cwd}/latent_buffers}/pusht_offline_replay_buffer.pt
 latent_key: proprio
 solver_mode: heat
 rw_steps: 20

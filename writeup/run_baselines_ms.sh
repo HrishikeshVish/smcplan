@@ -10,14 +10,14 @@
 # Claim queue shared by any number of workers (GPU=<g>). result.txt = "ok dt"
 # (field 1 success), read by make_main_table.py / make_cube_table.py.
 source ~/miniconda3/etc/profile.d/conda.sh; conda activate grasp
-cd /home/hviswan/Documents/grasp
-export DATASET_DIR=/home/hviswan/Documents/grasp/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
+export DATASET_DIR=$PWD/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 GPU=${GPU:?set GPU}
 NEED_MIB=${NEED_MIB:-12000}
 PLANNERS=${PLANNERS:-"gd12 grasp12"}
 ENVS=${ENVS:-"pointmaze wall reacher pusht cube"}
 HORIZONS=${HORIZONS:-"5 10 15"}
-CK=ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints
+CK=ckpt_base_path=$PWD/checkpoints
 gpu_free() { nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits -i $GPU; }
 
 run_one () {   # OUT args...

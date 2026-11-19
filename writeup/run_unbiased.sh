@@ -17,10 +17,10 @@
 # Cells: pusht H15 dropped -- the roadmap solves 5/100 unselected seeds there, so
 # nearly every pair would be both-fail and carry no information.
 source ~/miniconda3/etc/profile.d/conda.sh; conda activate grasp
-cd /home/hviswan/Documents/grasp
-export DATASET_DIR=/home/hviswan/Documents/grasp/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
+export DATASET_DIR=$PWD/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 ROOT=$PWD/sweep_aft/unbiased
-CK=ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints
+CK=ckpt_base_path=$PWD/checkpoints
 N=${N:-40}
 
 run () {   # env H arm gl seed args...

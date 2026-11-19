@@ -1,7 +1,7 @@
 #!/bin/bash
 # Emits one line per event: a worker with no log progress for STALL_S seconds
 # (and again when it recovers), any OOM/CRASH line, and a worker exiting.
-cd /home/hviswan/Documents/grasp
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
 STALL_S=${STALL_S:-1800}
 A_LOGS="sweep_emsmc/table/kfix_mopup.log sweep/gds12_gpu0.log sweep_emsmc/table/final_gpu0.log sweep/baselines_ms_gpu0.log sweep/cem12_gpu0.log sweep_emsmc/table/kfix_gpu0.log"
 B_LOGS="sweep_emsmc/table/kfix_hmc_wall_w.log sweep_emsmc/table/kfix_hmc_pusht_w1.log sweep_emsmc/table/kfix_hmc_pusht_w2.log"

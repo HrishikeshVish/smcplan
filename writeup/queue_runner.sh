@@ -3,7 +3,7 @@
 # reserved for another project). Runs queue_rev/*.sh in name order; a job is
 # renamed .running then .done. New jobs can be dropped in at any time; the
 # runner exits when the queue is empty and queue_rev/STOP exists.
-cd /home/hviswan/Documents/grasp
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
 Q=$PWD/queue_rev
 while true; do
   next=$(ls $Q/*.sh 2>/dev/null | sort | head -1)

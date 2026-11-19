@@ -6,13 +6,13 @@
 # under LeFlow's goal protocol (goal_H=5, dset, seeds 1..50).
 # Claim queue shared by any number of workers (GPU=<g>); result.txt = "ok dt".
 source ~/miniconda3/etc/profile.d/conda.sh; conda activate grasp
-cd /home/hviswan/Documents/grasp
-export DATASET_DIR=/home/hviswan/Documents/grasp/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
+export DATASET_DIR=$PWD/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 GPU=${GPU:?set GPU}
 NEED_MIB=${NEED_MIB:-8000}
 ENVS=${ENVS:-"pointmaze wall reacher pusht cube"}
 HORIZONS=${HORIZONS:-"5 10 15"}
-CK=ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints
+CK=ckpt_base_path=$PWD/checkpoints
 CEM="planner=cem planner.opt_steps=150 planner.num_samples=12 planner.topk=3 planner.eval_every=1"
 gpu_free() { nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits -i $GPU; }
 for e in $ENVS; do

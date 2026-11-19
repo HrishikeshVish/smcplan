@@ -12,11 +12,11 @@
 # Cube is a LeWM env and fits alongside the point-maze budget sweep on the
 # other card, so this runs on GPU 0 while the queue keeps GPU 1.
 source ~/miniconda3/etc/profile.d/conda.sh; conda activate grasp
-cd /home/hviswan/Documents/grasp
-export DATASET_DIR=/home/hviswan/Documents/grasp/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
+export DATASET_DIR=$PWD/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export MUJOCO_GL=egl; unset DISPLAY
 ROOT=$PWD/sweep_aft/rawl2
-CK=ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints
+CK=ckpt_base_path=$PWD/checkpoints
 
 for s in $(python3 -c "import json;print(' '.join(map(str,json.load(open('writeup/slow_seeds.json'))['cube_H5_expand'])))"); do
   for arm in roadmap rawl2; do

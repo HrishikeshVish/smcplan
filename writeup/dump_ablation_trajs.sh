@@ -11,12 +11,12 @@
 # save_images=False here: we want the numbers, not the videos, and it is ~5x faster.
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate grasp
-cd /home/hviswan/Documents/grasp
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
 GPU=${GPU:-0}
-export CUDA_VISIBLE_DEVICES=$GPU DATASET_DIR=/home/hviswan/Documents/grasp/data
+export CUDA_VISIBLE_DEVICES=$GPU DATASET_DIR=$PWD/data
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 unset MUJOCO_GL; export DISPLAY=:2
-ROOT=/home/hviswan/Documents/grasp/sweep_fk/ablate_trajs
+ROOT=$PWD/sweep_fk/ablate_trajs
 SEEDS="4 6 8 10 12 14 19 21 23 24 25 28 29 30 32 33 34 36 40 41 54 56 58 60 63 71 72 77 80 83 84 85 88 89 91 94 95 98"
 for mode in none objective_raw; do
   for s in $SEEDS; do
@@ -28,7 +28,7 @@ for mode in none objective_raw; do
         goal_source=random_state seed=$s save_images=False \
         planner.opt_steps=150 planner.eval_every=1 planner.num_particles=3 \
         planner.num_smooth_samples=1 planner.v_null=$mode \
-        ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints > "$OUT/run.log" 2>&1
+        ckpt_base_path=$PWD/checkpoints > "$OUT/run.log" 2>&1
   done
   echo "=== DONE traj arm $mode $(date +%T) ==="
 done

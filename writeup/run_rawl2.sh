@@ -16,10 +16,10 @@
 # and GRASP_TRAJ_DUMP for the executed state trajectory, so path length and
 # straightness are recoverable -- distance to the goal is not trajectory quality.
 source ~/miniconda3/etc/profile.d/conda.sh; conda activate grasp
-cd /home/hviswan/Documents/grasp
-export DATASET_DIR=/home/hviswan/Documents/grasp/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
+export DATASET_DIR=$PWD/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 ROOT=$PWD/sweep_aft/rawl2
-CK=ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints
+CK=ckpt_base_path=$PWD/checkpoints
 SEEDS_JSON=writeup/slow_seeds.json
 
 run () {  # env H arm gl seed args...

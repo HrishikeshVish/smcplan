@@ -12,11 +12,11 @@
 # Seeds: 19, 25, 52 are the three JALA uniquely solved at P=32; 1, 2 are
 # regression checks.
 source ~/miniconda3/etc/profile.d/conda.sh; conda activate grasp
-cd /home/hviswan/Documents/grasp
-export DATASET_DIR=/home/hviswan/Documents/grasp/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
+export DATASET_DIR=$PWD/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 unset MUJOCO_GL; export DISPLAY=:0
 GPU=${GPU:-0}; ARM=${ARM:?set ARM}; SEEDS=${SEEDS:-"1 2 19 25 52"}; P=${P:-8}
-CK=ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints
+CK=ckpt_base_path=$PWD/checkpoints
 case $ARM in
   ident)  X="planner.precond=none";;
   pscond) X="planner.precond=grad planner.precond_power=0.5";;

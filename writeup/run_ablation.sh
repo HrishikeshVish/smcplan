@@ -5,10 +5,10 @@
 # identical L_dyn, identical tempering/resampling, only the move differs.
 # Seed set: writeup/aft_sanity_seeds.txt (seeds where FK beat the baselines).
 source ~/miniconda3/etc/profile.d/conda.sh; conda activate grasp
-cd /home/hviswan/Documents/grasp
-export DATASET_DIR=/home/hviswan/Documents/grasp/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
+export DATASET_DIR=$PWD/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 ROOT=$PWD/sweep_aft/ablation
-CK=ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints
+CK=ckpt_base_path=$PWD/checkpoints
 
 MALA="++planner.kernel=mala"
 HMC="++planner.kernel=hmc ++planner.hmc_leaps=1 ++planner.hmc_beta1=0.9 ++planner.hmc_warmup=10"

@@ -111,7 +111,7 @@ select: task
 stop_on_success: true
 
 # --- world model / graph: identical to fk_pointmaze.yaml ---------------------
-replay_buffer_path: /home/hviswan/Documents/grasp/latent_buffers/pointmaze_buffer.pt
+replay_buffer_path: ${oc.env:GRASP_BUFFER_DIR,${hydra:runtime.cwd}/latent_buffers}/pointmaze_buffer.pt
 latent_key: proprio
 solver_mode: heat
 rw_steps: 20

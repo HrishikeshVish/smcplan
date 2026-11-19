@@ -11,7 +11,7 @@ num_samples: 1
 action_clamp: 0
 action_reg: 0.0
 
-replay_buffer_path: /scratch/gilbreth/hviswan/grasp/latent_buffers/lewm_reacher_buffer.pt
+replay_buffer_path: ${oc.env:GRASP_BUFFER_DIR,${hydra:runtime.cwd}/latent_buffers}/lewm_reacher_buffer.pt
 latent_key: visual
 
 hjb_tau: 0.002

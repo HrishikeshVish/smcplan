@@ -5,10 +5,10 @@
 # changes at once (anisotropy vs. a hotter chain). Run on cube seeds 17 and 24
 # -- 24 is the seed that passes the stability screen, so it discriminates.
 source ~/miniconda3/etc/profile.d/conda.sh; conda activate grasp
-cd /home/hviswan/Documents/grasp
-export DATASET_DIR=/home/hviswan/Documents/grasp/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
+export DATASET_DIR=$PWD/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export MUJOCO_GL=egl; unset DISPLAY
-CK=ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints
+CK=ckpt_base_path=$PWD/checkpoints
 
 # wait for the unnormalised probe to release the GPU
 while pgrep -f "run_psgld_noise.sh" > /dev/null; do sleep 20; done

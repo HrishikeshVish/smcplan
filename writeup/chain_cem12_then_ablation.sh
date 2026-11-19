@@ -1,7 +1,7 @@
 #!/bin/bash
 # Per GPU: wait for its GD-12/GRASP-12 worker to finish, then CEM-12, then the
 # kernel ablation (replaces the ablation step of launch_baselines_then_ablation.sh).
-cd /home/hviswan/Documents/grasp
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
 for g in 0 1; do
   ( until grep -q "BASELINES WORKER DONE" sweep/baselines_ms_gpu$g.log 2>/dev/null; do sleep 60; done
     GPU=$g bash writeup/run_cem12.sh >> sweep/cem12_gpu$g.log 2>&1

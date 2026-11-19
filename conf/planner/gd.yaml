@@ -11,7 +11,7 @@ num_samples: 1
 action_clamp: 0 # clamp value for actions; 0 means no clamping
 
 # Latent replay buffer for heat-equation value function
-replay_buffer_path: /scratch/gilbreth/hviswan/dino_wm/pointmaze_offline_replay_buffer.pt
+replay_buffer_path: ${oc.env:GRASP_BUFFER_DIR,${hydra:runtime.cwd}/latent_buffers}/pointmaze_offline_replay_buffer.pt
 latent_key: proprio  # 'proprio' (pointmaze) or 'visual' (pusht, lewm)
 
 hjb_tau: 0.0  # weight for V guidance at terminal state

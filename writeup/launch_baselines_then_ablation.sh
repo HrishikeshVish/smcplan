@@ -1,7 +1,7 @@
 #!/bin/bash
 # Per GPU: 12-candidate baselines (GD-12, GRASP-12) first, then resume the kernel
 # ablation (claim queues skip everything already finished).
-cd /home/hviswan/Documents/grasp
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
 for g in ${GPUS:-0 1}; do
   ( GPU=$g bash writeup/run_baselines_ms.sh >> sweep/baselines_ms_gpu$g.log 2>&1
     for K in mala rwm hmc; do

@@ -28,12 +28,12 @@
 # skipped, so re-running after an interrupt picks up where it stopped.
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate grasp
-cd /home/hviswan/Documents/grasp
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
 GPU=${GPU:-1}
-export CUDA_VISIBLE_DEVICES=$GPU DATASET_DIR=/home/hviswan/Documents/grasp/data
+export CUDA_VISIBLE_DEVICES=$GPU DATASET_DIR=$PWD/data
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
-ROOT=${ROOT:-/home/hviswan/Documents/grasp/sweep_fk/table}
+ROOT=${ROOT:-$PWD/sweep_fk/table}
 SEEDS=${SEEDS:-$(seq 1 100)}
 HORIZONS=${HORIZONS:-"5 10 15"}
 STEPS=${STEPS:-150}
@@ -75,7 +75,7 @@ run_env () {                  # name model planner gl goal_source particles smoo
                     goal_H=$H goal_source=$gsrc seed=$s save_images=False \
                     planner.opt_steps=$STEPS planner.eval_every=1 \
                     planner.num_particles=$np planner.num_smooth_samples=$sm \
-                    ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints \
+                    ckpt_base_path=$PWD/checkpoints \
                     > "$OUT/run.log" 2>&1
                 local dt=$(( $(date +%s) - t0 ))
                 # Harvest from run.log, as run_sweep.sh does: uniform across

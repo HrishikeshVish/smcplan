@@ -6,7 +6,7 @@
 # planner depends on K (m_smooth_samples=1, adaptive beta), so success at budget
 # K is read off the success-against-iteration curves.
 # Usage: GPU=0 CELLS="pointmaze reacher" ARMS="..." bash writeup/run_ablations.sh
-cd /home/hviswan/Documents/grasp
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
 GPU=${GPU:?set GPU}
 CELLS=${CELLS:-"pointmaze reacher"}
 ROOT=$PWD/sweep_emsmc/ablate

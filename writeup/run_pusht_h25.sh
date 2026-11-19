@@ -13,13 +13,13 @@
 # needs frameskip*goal_H+1 = 126.
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate grasp
-cd /home/hviswan/Documents/grasp
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
 GPU=${GPU:-0}
-export CUDA_VISIBLE_DEVICES=$GPU DATASET_DIR=/home/hviswan/Documents/grasp/data
+export CUDA_VISIBLE_DEVICES=$GPU DATASET_DIR=$PWD/data
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 unset MUJOCO_GL; export DISPLAY=:2
 
-ROOT=/home/hviswan/Documents/grasp/sweep_pusht_h25
+ROOT=$PWD/sweep_pusht_h25
 # H=25 retains 125 env steps of rollout for autograd and needs most of the card:
 # a 2-particle run climbed to 8.6 GB and OOM'd while the H<=15 sweeps held only
 # 5.3 GB between them. Gate high so this waits for the card rather than dying.
@@ -59,7 +59,7 @@ for planner in ${PLANNERS:-fk gd cem grasp}; do
       GRASP_RESULTS_DIR="$OUT" timeout $PER_RUN_TIMEOUT python plan.py \
           model_name=pusht n_evals=1 goal_H=$H goal_source=dset seed=$s \
           save_images=False $(planner_args $planner) \
-          ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints \
+          ckpt_base_path=$PWD/checkpoints \
           > "$OUT/run.log" 2>&1
       dt=$(( $(date +%s) - t0 ))
       if grep -q "Success rate:" "$OUT/run.log" 2>/dev/null; then

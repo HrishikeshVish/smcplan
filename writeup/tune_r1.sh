@@ -1,5 +1,5 @@
 #!/bin/bash
-cd /home/hviswan/Documents/grasp
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
 S="4 8 11 15 17 18 20 21 22 25 28 33 36 37 39 45 55 57 60 62 65 69 72 81 99"
 C="CHUNK=4"
 GPU=1 CHUNK=4 H=5 SEEDS="$S" NEED_MIB=6000 TAG=pathwise OVR="planner.m_step=pathwise planner.m_chunk=4" bash writeup/run_tune_pusht.sh

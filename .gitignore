@@ -25,3 +25,22 @@ train.log
 hydra.yaml
 
 adapters/
+
+# data, checkpoints and the roadmap buffers (scripts/download_data.sh,
+# scripts/prepare_buffers.sh); paths or symlinks, either way not tracked
+data
+checkpoints
+latent_buffers
+
+# sweep outputs: one directory per seed, written by writeup/*.sh
+sweep
+sweep_*/
+experiments/
+
+# third-party working outputs; the submodules themselves are tracked as gitlinks
+third_party/work/
+
+# local copies of papers and an older partial copy of this tree
+references/
+paper_references/
+/grasp/

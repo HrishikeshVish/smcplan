@@ -29,13 +29,13 @@
 # qpos[14:17] was verified identical to the dataset's privileged_block_0_pos.
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate grasp
-cd /home/hviswan/Documents/grasp
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
 GPU=${GPU:-0}
-export CUDA_VISIBLE_DEVICES=$GPU DATASET_DIR=/home/hviswan/Documents/grasp/data
+export CUDA_VISIBLE_DEVICES=$GPU DATASET_DIR=$PWD/data
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export MUJOCO_GL=egl; unset DISPLAY
 
-ROOT=${ROOT:-/home/hviswan/Documents/grasp/sweep_cube_leflow}
+ROOT=${ROOT:-$PWD/sweep_cube_leflow}
 SEEDS=${SEEDS:-$(seq 1 50)}
 PER_RUN_TIMEOUT=2400
 
@@ -63,7 +63,7 @@ for p in ${PLANNERS:-mpc_cem gd grasp fk}; do
     GRASP_TRAJ_DUMP="$OUT/traj.npz" GRASP_RESULTS_DIR="$OUT" timeout $PER_RUN_TIMEOUT python plan.py \
         model_name=lewm_cube n_evals=1 goal_H=5 goal_source=dset seed=$s \
         save_images=False $(planner_args $p) \
-        ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints \
+        ckpt_base_path=$PWD/checkpoints \
         > "$OUT/run.log" 2>&1
     dt=$(( $(date +%s) - t0 ))
     if grep -q "Success rate:" "$OUT/run.log" 2>/dev/null; then

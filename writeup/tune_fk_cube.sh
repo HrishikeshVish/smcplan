@@ -27,11 +27,11 @@
 # on trivial goals is meaningless -- they are solved at t=0 by any planner.
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate grasp
-cd /home/hviswan/Documents/grasp
-export CUDA_VISIBLE_DEVICES=${GPU:-0} DATASET_DIR=/home/hviswan/Documents/grasp/data
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
+export CUDA_VISIBLE_DEVICES=${GPU:-0} DATASET_DIR=$PWD/data
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True MUJOCO_GL=egl; unset DISPLAY
 
-ROOT=/home/hviswan/Documents/grasp/sweep_fk/cube_tune
+ROOT=$PWD/sweep_fk/cube_tune
 SEEDS=${SEEDS:-"4 5 7 8 9 10"}
 STEPS=${STEPS:-150}
 
@@ -39,7 +39,7 @@ args_for () {
   case $1 in
     base)  echo "" ;;
     beta)  echo "planner.beta_max=10.0" ;;
-    dense) echo "planner.replay_buffer_path=/home/hviswan/Documents/grasp/latent_buffers/lewm_cube_dense.pt planner.graph_n_nodes=150000" ;;
+    dense) echo "planner.replay_buffer_path=$PWD/latent_buffers/lewm_cube_dense.pt planner.graph_n_nodes=150000" ;;
     rw)    echo "planner.solver_mode=rw_diffusion" ;;
   esac
 }
@@ -54,7 +54,7 @@ for cfg in ${CFGS:-base beta dense rw}; do
         model_name=lewm_cube n_evals=1 planner=fk_cube goal_H=5 goal_source=dset \
         seed=$s save_images=False planner.opt_steps=$STEPS planner.eval_every=1 \
         $(args_for $cfg) \
-        ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints > "$OUT/run.log" 2>&1
+        ckpt_base_path=$PWD/checkpoints > "$OUT/run.log" 2>&1
     dt=$(( $(date +%s) - t0 ))
     if grep -q "Success rate:" "$OUT/run.log" 2>/dev/null; then
         ok=0; grep -q "Success rate:  1.0" "$OUT/run.log" && ok=1

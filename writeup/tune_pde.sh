@@ -3,7 +3,7 @@
 # t=c/median(D), trajectory-weighted Vhat, auto lambda_V, surrogate 3000 steps).
 # Order: GD-12 failures at H5, then the 25 GD-12-only seeds at H5, then GD-12
 # failures at H10.
-cd /home/hviswan/Documents/grasp
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
 P=/tmp/claude-1002/-home-hviswan-Documents-grasp-langevin/665af950-b32b-4966-b53a-0925538356b0/scratchpad
 O="planner.m_step=pathwise planner.m_smooth_samples=1 ++planner.v_traj=all ++planner.v_base=2.0 ++planner.heat_t_rule=degree ++planner.heat_c=10.0 planner.graph_k_neighbors=64 ++planner.surrogate_steps=3000"
 export GPU=0 NEED_MIB=6000 TAG=pde_pathwise_s1 LAMBDA_V=auto OVR="$O"

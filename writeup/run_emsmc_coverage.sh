@@ -16,12 +16,12 @@
 # selection failure (it does and argmin task loss misses it -- the proxy's job),
 # and reports Spearman(latent objective, true distance) as the z->s fidelity.
 source ~/miniconda3/etc/profile.d/conda.sh; conda activate grasp
-cd /home/hviswan/Documents/grasp
-export DATASET_DIR=/home/hviswan/Documents/grasp/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
+export DATASET_DIR=$PWD/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 unset MUJOCO_GL; export DISPLAY=:0
 GPU=${GPU:-0}; KERNELS=${KERNELS:?set KERNELS}
 SEEDS=$(cat "${SEEDFILE:?set SEEDFILE}")
-CK=ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints
+CK=ckpt_base_path=$PWD/checkpoints
 BASE="planner.m_step=score planner.m_smooth_samples=1 planner.beta_schedule=adaptive planner.beta_max=1.0 planner.eval_chunk=8 planner.num_particles=32"
 for K in $KERNELS; do
   EXTRA=""

@@ -23,14 +23,14 @@
 # Resumable: a seed with a non-empty seed_success_log.txt is skipped.
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate grasp
-cd /home/hviswan/Documents/grasp
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
 export MUJOCO_GL=egl                 # reacher: required
 unset DISPLAY
 GPU=${GPU:-1}
-export CUDA_VISIBLE_DEVICES=$GPU DATASET_DIR=/home/hviswan/Documents/grasp/data
+export CUDA_VISIBLE_DEVICES=$GPU DATASET_DIR=$PWD/data
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
-ROOT=${ROOT:-/home/hviswan/Documents/grasp/sweep_fk/reacher}
+ROOT=${ROOT:-$PWD/sweep_fk/reacher}
 NEED_MIB=${NEED_MIB:-7000}
 MAX_TRIES=3
 GATE_TIMEOUT=${GATE_TIMEOUT:-1800}
@@ -64,7 +64,7 @@ for H in $HORIZONS; do
                 goal_H=$H goal_source=random_state seed=$s \
                 save_images=False planner.opt_steps=$STEPS planner.eval_every=1 \
                 planner.num_particles=$PARTICLES planner.num_smooth_samples=$SMOOTH \
-                ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints \
+                ckpt_base_path=$PWD/checkpoints \
                 > "$OUT/run.log" 2>&1
             dt=$(( $(date +%s) - t0 ))
             if [ -s "$OUT/seed_success_log.txt" ]; then

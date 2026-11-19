@@ -12,11 +12,11 @@
 # in WEIGHT VARIANCE instead of rejection -- so the binding constraint should be
 # ESS, not acceptance. This sweep finds where that bites.
 source ~/miniconda3/etc/profile.d/conda.sh; conda activate grasp
-cd /home/hviswan/Documents/grasp
-export DATASET_DIR=/home/hviswan/Documents/grasp/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
+export DATASET_DIR=$PWD/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 unset MUJOCO_GL; export DISPLAY=:0
 GPU=${GPU:-0}; EPSL=${EPSL:?set EPSL}; SEED=${SEED:-6}
-CK=ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints
+CK=ckpt_base_path=$PWD/checkpoints
 for E in $EPSL; do
   OUT=$PWD/sweep_emsmc/jala_tune/eps_$E
   [ -s "$OUT/result.txt" ] && continue

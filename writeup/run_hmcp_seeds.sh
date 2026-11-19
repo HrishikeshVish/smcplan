@@ -4,11 +4,11 @@
 # config solved (regression check -- does the new tuning break them?) with seeds
 # it failed (improvement check).
 source ~/miniconda3/etc/profile.d/conda.sh; conda activate grasp
-cd /home/hviswan/Documents/grasp
-export DATASET_DIR=/home/hviswan/Documents/grasp/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
+export DATASET_DIR=$PWD/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 unset MUJOCO_GL; export DISPLAY=:0
 GPU=${GPU:-0}; SEEDS=${SEEDS:?set SEEDS}
-CK=ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints
+CK=ckpt_base_path=$PWD/checkpoints
 for s in $SEEDS; do
   OUT=$PWD/sweep_emsmc/hmcp_seeds/seed_$s
   [ -s "$OUT/result.txt" ] && continue

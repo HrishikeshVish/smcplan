@@ -34,7 +34,7 @@ action_clamp: 0
 # (on-manifold). The reacher buffer had a silent encoding bug that put every
 # query ~161 scaled units from the graph -- see the heat-value-equals-linear-bias
 # memory. pusht's buffer checked out at dmin 0.16-0.43; reacher's broken one did not.
-replay_buffer_path: /home/hviswan/Documents/grasp/latent_buffers/lewm_cube_buffer.pt
+replay_buffer_path: ${oc.env:GRASP_BUFFER_DIR,${hydra:runtime.cwd}/latent_buffers}/lewm_cube_buffer.pt
 latent_key: visual
 solver_mode: heat
 rw_steps: 20

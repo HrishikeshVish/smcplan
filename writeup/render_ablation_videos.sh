@@ -9,13 +9,13 @@
 # Everything else matches the ablation exactly: np=3, H=10, 150 steps.
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate grasp
-cd /home/hviswan/Documents/grasp
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
 GPU=${GPU:-0}
-export CUDA_VISIBLE_DEVICES=$GPU DATASET_DIR=/home/hviswan/Documents/grasp/data
+export CUDA_VISIBLE_DEVICES=$GPU DATASET_DIR=$PWD/data
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 unset MUJOCO_GL; export DISPLAY=:2
 
-ROOT=${ROOT:-/home/hviswan/Documents/grasp/sweep_fk/renders}
+ROOT=${ROOT:-$PWD/sweep_fk/renders}
 SEEDS=${SEEDS:-"23 19 6"}
 for mode in none objective_raw; do
   for s in $SEEDS; do
@@ -30,7 +30,7 @@ for mode in none objective_raw; do
         planner.opt_steps=150 planner.eval_every=1 \
         planner.num_particles=3 planner.num_smooth_samples=1 \
         planner.v_null=$mode \
-        ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints \
+        ckpt_base_path=$PWD/checkpoints \
         > "$OUT/run.log" 2>&1
     # The official writer uses a bare relative filename, so the mp4 lands in the
     # Hydra run dir, not GRASP_RESULTS_DIR. Recover it from the logged path.

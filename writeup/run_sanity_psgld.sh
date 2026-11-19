@@ -4,11 +4,11 @@
 # as each env's FK sweep; only the move changes. Reacher goals were unseeded in
 # the sweep, so reacher runs BOTH fk and aft on the (now fixed) goals.
 source ~/miniconda3/etc/profile.d/conda.sh; conda activate grasp
-cd /home/hviswan/Documents/grasp
-export DATASET_DIR=/home/hviswan/Documents/grasp/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
+export DATASET_DIR=$PWD/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 ROOT=$PWD/sweep_aft/psgld_sanity
 AFT="++planner.precond_noise=true ++planner.precond_freeze=10"   # pSGLD: adam drift + matched Langevin noise
-CK=ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints
+CK=ckpt_base_path=$PWD/checkpoints
 
 run () {  # env H seed arm gl args...
   local env=$1 H=$2 s=$3 arm=$4 gl=$5; shift 5

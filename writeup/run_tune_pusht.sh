@@ -4,8 +4,8 @@
 # P=12, adaptive beta<=1, score M-step, L2 cost, 150 iters); TAG names the
 # variant, OVR holds its overrides. Output sweep_emsmc/tune_pusht/<TAG>/H<H>/seed_s.
 source ~/miniconda3/etc/profile.d/conda.sh; conda activate grasp
-cd /home/hviswan/Documents/grasp
-export DATASET_DIR=/home/hviswan/Documents/grasp/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
+export DATASET_DIR=$PWD/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 unset MUJOCO_GL; export DISPLAY=:0
 GPU=${GPU:?}; TAG=${TAG:?}; OVR=${OVR:-}; H=${H:-5}
 LAMBDA_V=${LAMBDA_V:-0.0}   # roadmap cost weight; "auto" = scale-matched PDE arm
@@ -26,7 +26,7 @@ for s in $SEEDS; do
   mkdir -p $OUT; t0=$(date +%s)
   CUDA_VISIBLE_DEVICES=$GPU GRASP_RESULTS_DIR=$OUT timeout 5400 python plan.py n_evals=1 \
     seed=$s goal_H=$H save_images=False model_name=pusht planner=emsmc_pusht goal_source=dset \
-    $BASE $OVR ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints > $OUT/run.log 2>&1
+    $BASE $OVR ckpt_base_path=$PWD/checkpoints > $OUT/run.log 2>&1
   dt=$(( $(date +%s) - t0 ))
   if [ -s "$OUT/seed_success_log.txt" ]; then
     read ok it < <(tail -1 $OUT/seed_success_log.txt | awk '{print ($1>=1.0)?1:0, $5}')

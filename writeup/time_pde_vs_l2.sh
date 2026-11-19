@@ -6,12 +6,12 @@
 # the L2 arm sets lambda_v=0 and hjb_tau=0, so no roadmap is loaded or built.
 # GPU0 only, one run at a time (GPU1 is reserved for another project).
 source ~/miniconda3/etc/profile.d/conda.sh; conda activate grasp
-cd /home/hviswan/Documents/grasp
-export DATASET_DIR=/home/hviswan/Documents/grasp/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
+export DATASET_DIR=$PWD/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export GRASP_TIMING=1
 ROOT=${ROOT:-$PWD/sweep_timing}
 ITERS=${ITERS:-30}
-CK=ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints
+CK=ckpt_base_path=$PWD/checkpoints
 PIN="++planner.kernel=ula planner.precond=none planner.kernel_step_size=0.18 \
 planner.num_particles=12 planner.beta_schedule=adaptive planner.beta_max=1.0 \
 planner.m_step=pathwise planner.m_smooth_samples=1 planner.opt_steps=$ITERS \

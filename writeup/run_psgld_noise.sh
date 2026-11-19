@@ -5,11 +5,11 @@
 # sqrt(2*lr*T); this walks the multiplier down and includes plain FK as the
 # control on the same code path.
 source ~/miniconda3/etc/profile.d/conda.sh; conda activate grasp
-cd /home/hviswan/Documents/grasp
-export DATASET_DIR=/home/hviswan/Documents/grasp/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
+export DATASET_DIR=$PWD/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export MUJOCO_GL=egl; unset DISPLAY
 ROOT=$PWD/sweep_aft/psgld_noise/cube_s17
-CK=ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints
+CK=ckpt_base_path=$PWD/checkpoints
 
 run () {  # tag args...
   local tag=$1; shift

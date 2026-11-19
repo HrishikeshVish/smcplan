@@ -21,8 +21,8 @@
 #
 # Usage: GPU=0 bash writeup/run_emsmc_table.sh   (start one worker per slot)
 source ~/miniconda3/etc/profile.d/conda.sh; conda activate grasp
-cd /home/hviswan/Documents/grasp
-export DATASET_DIR=/home/hviswan/Documents/grasp/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
+export DATASET_DIR=$PWD/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 GPU=${GPU:?set GPU}
 ROOT=${ROOT:-$PWD/sweep_emsmc/table}
 ENVS=${ENVS:-"pointmaze wall reacher pusht"}
@@ -32,7 +32,7 @@ LAMBDA_V=${LAMBDA_V:-auto}
 ARM=${ARM:-pde}
 EXTRA=${EXTRA:-}
 NEED_MIB=${NEED_MIB:-6000}
-CK=ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints
+CK=ckpt_base_path=$PWD/checkpoints
 PIN="++planner.kernel=ula planner.precond=none planner.kernel_step_size=0.18 \
 planner.num_particles=12 planner.beta_schedule=adaptive planner.beta_max=1.0 \
 planner.m_step=score ++planner.lambda_v=$LAMBDA_V ++planner.v_traj=all ++planner.v_base=2.0 ++planner.heat_t_rule=degree ++planner.surrogate_steps=3000 planner.opt_steps=150 \

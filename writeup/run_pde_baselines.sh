@@ -11,7 +11,7 @@
 #
 # Usage: GPU=0 CELLS="pointmaze:10 pusht:5" bash writeup/run_pde_baselines.sh
 set -u
-cd /home/hviswan/Documents/grasp
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
 source ~/miniconda3/etc/profile.d/conda.sh && conda activate grasp
 GPU=${GPU:-0}
 CELLS=${CELLS:-"pointmaze:10 pusht:5 reacher:15"}
@@ -19,8 +19,8 @@ PLANNERS=${PLANNERS:-"gds12 cem12 mppi12"}
 SEEDS=${SEEDS:-$(seq 1 100)}
 PER_RUN_TIMEOUT=${PER_RUN_TIMEOUT:-1800}
 export CUDA_VISIBLE_DEVICES=$GPU
-CKPT=/home/hviswan/Documents/grasp/checkpoints
-BUF=/home/hviswan/Documents/grasp/latent_buffers
+CKPT=$PWD/checkpoints
+BUF=$PWD/latent_buffers
 
 pde_args () {   # per-env roadmap: the (k, c) the Table-1 PDE runs use
   case $1 in                                    # writeup/run_emsmc_pde.sh:52-55

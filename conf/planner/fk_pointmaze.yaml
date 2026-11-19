@@ -45,7 +45,7 @@ action_clamp: 0
 # graph sits ~161 scaled units from every latent the planner queries, so V
 # lookups were noise (verified 2026-08-21: fresh encodings match _fixed
 # rows to 0.0, and are ~14x the data scale away from the old buffer's).
-replay_buffer_path: /home/hviswan/Documents/grasp/latent_buffers/pointmaze_buffer.pt
+replay_buffer_path: ${oc.env:GRASP_BUFFER_DIR,${hydra:runtime.cwd}/latent_buffers}/pointmaze_buffer.pt
 latent_key: proprio
 solver_mode: heat
 rw_steps: 20

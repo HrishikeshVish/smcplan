@@ -115,7 +115,7 @@ stop_on_success: true
 # lewm_reacher_fixed.pt is the CORRECT buffer -- lewm_reacher_buffer.pt was
 # encoded without the ImageNet transform and its graph sits ~161 scaled units
 # from every latent the planner queries (see fk_pointmaze.yaml's warning).
-replay_buffer_path: /home/hviswan/Documents/grasp/latent_buffers/lewm_reacher_fixed.pt
+replay_buffer_path: ${oc.env:GRASP_BUFFER_DIR,${hydra:runtime.cwd}/latent_buffers}/lewm_reacher_fixed.pt
 latent_key: visual
 solver_mode: heat
 rw_steps: 20

@@ -113,7 +113,7 @@ stop_on_success: true
 # --- world model / graph: identical to fk_pointmaze.yaml ---------------------
 # Cube (LeWM / OGBench): visual latent. Fixed-goal task under the LeFlow
 # protocol -- invoked with goal_source=dset and goal_offset_steps=25.
-replay_buffer_path: /home/hviswan/Documents/grasp/latent_buffers/lewm_cube_buffer.pt
+replay_buffer_path: ${oc.env:GRASP_BUFFER_DIR,${hydra:runtime.cwd}/latent_buffers}/lewm_cube_buffer.pt
 latent_key: visual
 solver_mode: heat
 rw_steps: 20

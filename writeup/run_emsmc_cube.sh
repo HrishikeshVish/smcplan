@@ -8,12 +8,12 @@
 # sweep_emsmc/calib_*.log) with the trajectory-weighted Vhat and auto lambda_V.
 # Claim queue: any number of workers (GPU=<g>) can share it.
 source ~/miniconda3/etc/profile.d/conda.sh; conda activate grasp
-cd /home/hviswan/Documents/grasp
-export DATASET_DIR=/home/hviswan/Documents/grasp/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
+export DATASET_DIR=$PWD/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export MUJOCO_GL=egl; unset DISPLAY
 GPU=${GPU:?set GPU}
 ARM=${ARM:-em}
-ROOT=/home/hviswan/Documents/grasp/sweep_cube_leflow
+ROOT=$PWD/sweep_cube_leflow
 SEEDS=${SEEDS:-$(seq 1 50)}
 NEED_MIB=${NEED_MIB:-6000}
 KERNEL=${KERNEL:-ula}
@@ -57,7 +57,7 @@ for s in $SEEDS; do
   CUDA_VISIBLE_DEVICES=$GPU GRASP_TRAJ_DUMP="$OUT/traj.npz" GRASP_RESULTS_DIR=$OUT \
     timeout 5400 python plan.py model_name=lewm_cube planner=emsmc_cube n_evals=1 \
     goal_H=5 goal_source=dset seed=$s save_images=False $PIN $COST \
-    ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints > $OUT/run.log 2>&1
+    ckpt_base_path=$PWD/checkpoints > $OUT/run.log 2>&1
   dt=$(( $(date +%s) - t0 ))
   if [ -s "$OUT/seed_success_log.txt" ]; then
     read ok it < <(tail -1 $OUT/seed_success_log.txt | awk '{print ($1>=1.0)?1:0, $5}')

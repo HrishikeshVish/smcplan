@@ -6,10 +6,10 @@
 #   H=10 seed 51 (7.6 px), H=10 seed 29 (8.8 px), H=15 seed 50 (11.3 px), H=15 seed 19 (14.2 px)
 # Same configs and run() as render_frames_eq12.sh.
 source ~/miniconda3/etc/profile.d/conda.sh; conda activate grasp
-cd /home/hviswan/Documents/grasp
-export DATASET_DIR=/home/hviswan/Documents/grasp/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
+export DATASET_DIR=$PWD/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 unset MUJOCO_GL; export DISPLAY=:0
-CK=ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints
+CK=ckpt_base_path=$PWD/checkpoints
 OURS="++planner.kernel=ula planner.precond=none planner.kernel_step_size=0.18 \
 planner.num_particles=12 planner.beta_schedule=adaptive planner.beta_max=1.0 \
 planner.m_step=pathwise planner.m_smooth_samples=1 ++planner.lambda_v=auto ++planner.v_traj=all ++planner.v_base=2.0 ++planner.heat_t_rule=degree ++planner.surrogate_steps=3000 planner.opt_steps=150 \

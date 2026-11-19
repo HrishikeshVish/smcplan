@@ -3,7 +3,7 @@
 # (replaces mopup_ablation.sh, whose 12 GB-gated pass competed with them).
 # Claim queues skip finished seeds, so this only re-runs seeds whose claims were
 # cleared after a failure.
-cd /home/hviswan/Documents/grasp
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
 while pgrep -f "hmc_pusht_worker" > /dev/null; do sleep 60; done
 for K in mala rwm hmc; do
   GPU=0 KERNEL=$K ARM=kfix_$K HORIZONS=10 NEED_MIB=12000 bash writeup/run_emsmc_final.sh >> sweep_emsmc/table/kfix_mopup.log 2>&1

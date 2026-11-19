@@ -113,7 +113,7 @@ stop_on_success: true
 # --- world model / graph: identical to fk_pointmaze.yaml ---------------------
 # Wall (DINO-WM): graph over the 10-D proprio readout, 12600 nodes as in
 # fk_wall.yaml.
-replay_buffer_path: /home/hviswan/Documents/grasp/latent_buffers/wall_buffer.pt
+replay_buffer_path: ${oc.env:GRASP_BUFFER_DIR,${hydra:runtime.cwd}/latent_buffers}/wall_buffer.pt
 latent_key: proprio
 solver_mode: heat
 rw_steps: 20

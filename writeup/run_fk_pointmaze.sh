@@ -16,10 +16,10 @@
 # is SKIPPED, not re-run.
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate grasp
-cd /home/hviswan/Documents/grasp
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
 unset MUJOCO_GL                      # pointmaze: MUJOCO_GL must be unset
 GPU=${GPU:-1}
-export CUDA_VISIBLE_DEVICES=$GPU DATASET_DIR=/home/hviswan/Documents/grasp/data
+export CUDA_VISIBLE_DEVICES=$GPU DATASET_DIR=$PWD/data
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 NEED_MIB=${NEED_MIB:-6500}   # 3 particles; lower than the 9000 baseline gate
@@ -52,7 +52,7 @@ run_arm () {                          # outdir  extra-overrides
                 save_images=False planner.opt_steps=150 planner.eval_every=1 \
                 planner.num_particles=3 planner.num_smooth_samples=1 \
                 +planner.sample_type=randn planner.action_reg=0 $EXTRA \
-                ckpt_base_path=/home/hviswan/Documents/grasp/checkpoints \
+                ckpt_base_path=$PWD/checkpoints \
                 > "$OUT/run.log" 2>&1
             if [ -s "$OUT/seed_success_log.txt" ]; then
                 echo "=== [$(basename $BASE)] seed $s done $(date +%T): $(cat $OUT/seed_success_log.txt)"
