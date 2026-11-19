@@ -1,6 +1,0 @@
-[freeze=false s1] success=1
-[freeze=false s6] success=1
-[freeze=false s7] success=0
-=== ARM DONE freeze=false 13:56 ===
-=== ARM DONE freeze=true 13:56 ===
-=== FREEZE SWEEP COMPLETE 13:56 ===

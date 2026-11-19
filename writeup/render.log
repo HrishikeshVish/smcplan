@@ -1,7 +1,0 @@
-[render none s23] 25s  traj=yes  mp4=yes
-[render none s19] 31s  traj=yes  mp4=yes
-[render none s6] 24s  traj=yes  mp4=yes
-[render objective_raw s23] 137s  traj=yes  mp4=yes
-[render objective_raw s19] 89s  traj=yes  mp4=yes
-[render objective_raw s6] 30s  traj=yes  mp4=yes
-=== RENDERS COMPLETE 18:56:16 ===

@@ -1,7 +1,0 @@
-[render fk s43] ok=2 frames=(1, 26, 224, 224, 3)
-[render gd s43] ok=0 frames=(1, 26, 224, 224, 3)
-[render fk s17] ok=2 frames=(1, 26, 224, 224, 3)
-[render gd s17] ok=0 frames=(1, 26, 224, 224, 3)
-[render fk s30] ok=2 frames=(1, 26, 224, 224, 3)
-[render gd s30] ok=3 frames=(1, 26, 224, 224, 3)
-CUBE RENDERS DONE

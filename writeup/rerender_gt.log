@@ -1,7 +1,0 @@
-[pm_fk seed 24] ok=2 exit=26 goal=yes
-[pm_gd seed 24] ok=0 exit=149 goal=yes
-[pusht_fk seed 20] ok=2 exit=29 goal=yes
-[pusht_gd seed 20] ok=0 exit=149 goal=yes
-[cube_fk seed 17] ok=2 exit=12 goal=yes
-[cube_gd seed 17] ok=0 exit=149 goal=yes
-GT RERENDER DONE

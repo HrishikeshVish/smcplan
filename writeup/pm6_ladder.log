@@ -1,5 +1,0 @@
-[a_adam] success=1 exit=4
-[b_shift_only] success=1 exit=4
-[c_scale_nologdet] success=0 exit=150
-=== FIRST FAILURE: c_scale_nologdet ===
-=== DONE ===

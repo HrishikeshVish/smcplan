@@ -1,3 +1,0 @@
-[pm_s6] success=1 exit=52 mean_acc=0.377
-[pusht_s24] success=0 exit=150 mean_acc=0.769
-=== HMC PROBE DONE ===

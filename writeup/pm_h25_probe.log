@@ -1,4 +1,0 @@
-pointmaze H25 np=3 -> OOM
-pointmaze H25 np=2 -> OK
-pointmaze H25 gd -> rc=0
-PM H25 PROBE DONE

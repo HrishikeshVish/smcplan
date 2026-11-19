@@ -8,7 +8,6 @@ Bottom     sequential Monte-Carlo -- ILLUSTRATIVE, in
            the style of Fig. 1 of Park et al. 2025 (Flow Q-learning): tempered
            densities of a synthetic 3-mode cost-to-go, beta 0 -> 1, with particles
            drawn from each; the cost panel supplies the weights.
-Previous version kept as fig_teaser_v1.py.
 """
 import os
 import sys
