@@ -5,7 +5,7 @@
     <summary>
       <h1>Latent Space Planning with Sequential Monte Carlo</h1>
       <p><a href="https://hrishikeshvish.github.io/">Hrishikesh Viswanath</a><sup>1</sup> &emsp; Anindita Ghosh<sup>2</sup> &emsp; Uttaran Bhattacharya<sup>3</sup> &emsp; <a href="https://ideas.cs.purdue.edu">Aniket Bera</a><sup>1</sup></p>
-      <p><sup>1</sup>Department of Computer Science, Purdue University &emsp; <sup>2</sup>MPI for Informatics &emsp; <sup>3</sup>Adobe Systems</p>
+      <p><sup>1</sup>Department of Computer Science, Purdue University &emsp; <sup>2</sup>Saarland University &emsp; <sup>3</sup>Adobe Systems</p>
       <i>Preprint, 2026</i>
     </summary>
   </ul>
