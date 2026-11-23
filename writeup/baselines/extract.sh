@@ -1,7 +1,7 @@
 #!/bin/bash
 # LeWM embeddings of every frame (GC-IDM's official extractor), then the
 # train-split episodes only (first 90%, as our roadmaps and splits use).
-cd /home/hviswan/Documents/grasp
+cd "$(dirname "$0")/../.."
 PY=~/.venvs/leflow/bin/python; W=$PWD/third_party/work/emb; mkdir -p $W
 export CUDA_VISIBLE_DEVICES=0
 for e in reacher cube; do

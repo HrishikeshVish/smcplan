@@ -44,7 +44,7 @@ NAME = {"pointmaze": "Point maze", "wall": "Wall", "pusht": "Push-T",
 ORDER = ["pointmaze", "wall", "pusht", "reacher"]
 import glob
 
-ROOT = "/home/hviswan/Documents/grasp"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, f"{ROOT}/writeup")
 from equal_particle_stats import wilson, arm_dir  # noqa: E402  (95% intervals for the error bars)
 

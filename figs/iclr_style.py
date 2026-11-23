@@ -96,8 +96,8 @@ def outlined(lw=2.6, color=INK):
 
 
 def save(fig, name, outdir=None):
-    # Finished figures live in grasp_langevin/figs; the scripts and renders stay here.
-    outdir = os.environ.get("FIG_OUT", "/home/hviswan/Documents/grasp_langevin/figs")
+    # Figures land in $FIG_OUT, by default this directory (figs/).
+    outdir = os.environ.get("FIG_OUT", os.path.dirname(os.path.abspath(__file__)))
     for ext in ("pdf", "png"):
         fig.savefig(os.path.join(outdir, f"{name}.{ext}"))
     plt.close(fig)

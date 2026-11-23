@@ -2,9 +2,7 @@
 kernel over action-sequence particles, tilted toward low heat-solver
 cost-to-go V by adaptive-tempered importance weights + systematic resampling.
 
-Design and derivation: see ~/.claude/plans/misty-soaring-gosling.md and the
-`fk-smc-planner-design` / `heat-value-equals-linear-bias` memories. The
-2026-08-21 rewrite fixes three no-op bugs found in the first version (all
+The 2026-08-21 rewrite fixes three no-op bugs found in the first version (all
 three together made the planner provably identical to vanilla GD):
 
   1. Degenerate population: all particles initialized to the same zero

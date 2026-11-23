@@ -22,14 +22,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from iclr_style import (use_style, save, rounded_frame, PINK_LIGHT,   # noqa: E402
                         PINK_DARK, GREY_LIGHT, GREY_DARK, INK)
 
-ROOT = "/home/hviswan/Documents/grasp"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ENVS = ["reacher", "pointmaze", "wall", "pusht"]
 # 2026-10-07: the equal-particle comparison of Table 1 -- every planner holds
 # 12 particles for 150 iterations (gds12, grasp12, cem12; ours = fixed JALA-EM,
 # pdefix). The 1-particle / 30x5 arms of the previous version are appendix tables.
 BASE = [("GD", "sweep/%s/gds12_H%d"), ("GRASP", "sweep/%s/grasp12_H%d"),
         ("CEM", "sweep/%s/cem12_H%d"), ("MPPI", "sweep/%s/mppi12_H%d")]
-sys.path.insert(0, "/home/hviswan/Documents/grasp/writeup")
+sys.path.insert(0, os.path.join(ROOT, "writeup"))
 from equal_particle_stats import arm_dir  # noqa: E402  (`ours` per OURS_PM)
 
 

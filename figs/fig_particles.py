@@ -31,7 +31,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from iclr_style import (use_style, save, rounded_frame, PINK, PINK_DARK,  # noqa: E402
                         GREY_DARK, INK)
 
-ROOT = "/home/hviswan/Documents/grasp/sweep_aft/abl_particles"
+ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sweep_aft", "abl_particles")
 DEFAULT_N = 8
 
 

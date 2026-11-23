@@ -15,15 +15,16 @@ t = (median sigma)^2, no dedupe) is scored as a reference row.
 Usage: CUDA_VISIBLE_DEVICES=0 python writeup/calib_pde.py [env ...]
 Writes sweep_emsmc/calib_pde_<env>.csv
 """
-import sys, csv, time
+import os, sys, csv, time
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 from scipy.stats import rankdata, spearmanr
-sys.path.insert(0, "/home/hviswan/Documents/grasp")
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, REPO)
 from planning.gd import MCMollifiedHeat, _load_replay_buffer
 
-B = "/home/hviswan/Documents/grasp/latent_buffers/"
+B = os.environ.get("GRASP_BUFFER_DIR", os.path.join(REPO, "latent_buffers")) + "/"
 ENVS = {"pointmaze": (B + "pointmaze_buffer.pt", 3800),
         "wall": (B + "wall_buffer.pt", 12600),
         "pusht": (B + "pusht_offline_replay_buffer.pt", 55000),
@@ -71,7 +72,7 @@ def run(env):
     z, zn, _ = _load_replay_buffer(path, "cuda")
     ep, tt = episodes(z, zn)
     rows = []
-    out = open(f"/home/hviswan/Documents/grasp/sweep_emsmc/calib_pde_{env}.csv", "w", newline="")
+    out = open(os.path.join(REPO, "sweep_emsmc", f"calib_pde_{env}.csv"), "w", newline="")
     w = csv.writer(out); w.writerow(["env", "k", "rule", "c", "t", "t_medD", "rho", "se", "u0"])
     print(f"\n== {env}: {len(z)} rows, {ep.max()+1} episodes", flush=True)
     goals_pairs = None

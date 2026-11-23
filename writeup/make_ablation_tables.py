@@ -18,12 +18,13 @@ the paired seeds. Arms that have not finished all seeds print "--".
 
 Usage: python make_ablation_tables.py <paper_dir>
 """
+import os
 import sys
 from decimal import ROUND_HALF_UP, Decimal
 
 from equal_particle_stats import ENVS, HS, SCORE_ENVS, mcnemar, outcomes, paired, wilson
 
-PAPER = sys.argv[1] if len(sys.argv) > 1 else "/home/hviswan/Documents/grasp-paper"
+PAPER = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("OUT_DIR", os.path.dirname(os.path.abspath(__file__)))
 CELLS = [("Point maze", "pointmaze"), ("Reacher", "reacher")]
 N_SEEDS = 100
 SMC = [("Particles $N$", [("2", "N2"), ("4", "N4"), ("8", "N8"),

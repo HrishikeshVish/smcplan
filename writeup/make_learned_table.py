@@ -12,12 +12,13 @@ seeds. Every number comes from equal_particle_stats.
 
 Usage: python make_learned_table.py <paper_dir>
 """
+import os
 import sys
 
 from equal_particle_stats import outcomes, paired, wilson
 from make_ablation_tables import rnd
 
-PAPER = sys.argv[1] if len(sys.argv) > 1 else "/home/hviswan/Documents/grasp-paper"
+PAPER = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("OUT_DIR", os.path.dirname(os.path.abspath(__file__)))
 CELLS = [("reacher", 5, 100), ("reacher", 10, 100), ("reacher", 15, 100), ("cube", 5, 50)]
 ROWS = [("ours", r"Ours$^{\ast}$"), ("leflow12", "LeFlow, $12$ paths"),
         ("leflow64", "LeFlow, $64$ paths"), ("gcidm_ol", "GC-IDM")]

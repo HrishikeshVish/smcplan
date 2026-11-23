@@ -46,7 +46,7 @@ from utils import cfg_to_dict, seed
 # LeWM support
 ALL_LEWM_ENVS = ["lewm_reacher", "lewm_cube"]
 
-os.environ.setdefault("DATASET_DIR", "/scratch/gilbreth/hviswan/grasp/data")
+os.environ.setdefault("DATASET_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "data"))
 
 log = logging.getLogger(__name__)
 

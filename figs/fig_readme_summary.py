@@ -29,7 +29,7 @@ from iclr_style import (use_style, GREY, GREY_DARK, GREY_LIGHT,  # noqa: E402
 LIGHTEST = "#E8E9EC"   # a fourth grey, so that no two baselines share a tone
 
 TABLE = os.environ.get(
-    "TABLE1_TEX", "/home/hviswan/Documents/grasp-paper/table1_iclr.tex")
+    "TABLE1_TEX", os.path.join(os.environ.get("OUT_DIR", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "writeup")), "table1_iclr.tex"))
 # Row label in the tex -> (label on the figure, bar colour).
 STYLE = {
     "Ours (PDE cost)": ("ours, PDE cost", PINK),

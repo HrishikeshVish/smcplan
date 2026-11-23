@@ -6,11 +6,12 @@
       <h1>Latent Space Planning with Sequential Monte Carlo</h1>
       <p><a href="https://hrishikeshvish.github.io/">Hrishikesh Viswanath</a><sup>1</sup> &emsp; Anindita Ghosh<sup>2</sup> &emsp; Uttaran Bhattacharya<sup>3</sup> &emsp; <a href="https://ideas.cs.purdue.edu">Aniket Bera</a><sup>1</sup></p>
       <p><sup>1</sup>Department of Computer Science, Purdue University &emsp; <sup>2</sup>Saarland University &emsp; <sup>3</sup>Adobe Systems</p>
-      <i>Preprint, 2026</i>
+      <i>arXiv preprint, 2026</i>
     </summary>
   </ul>
 </div>
 
+<a href="https://arxiv.org/abs/2611.26706"><img src="https://img.shields.io/badge/arXiv-2611.26706-B31B1B?style=for-the-badge&logo=arxiv&logoColor=B31B1B&labelColor=F0F0F0"/></a> &emsp;
 <a href="https://hrishikeshvish.github.io/smcplan/"><img src="https://img.shields.io/badge/Project-Page-0F7B8A?style=for-the-badge&labelColor=F0F0F0"/></a> &emsp;
 <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.10-598BE7?style=for-the-badge&logo=python&logoColor=598BE7&labelColor=F0F0F0"/></a> &emsp;
 <a href="https://pytorch.org/"><img src="https://img.shields.io/badge/PyTorch-2.11-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=EE4C2C&labelColor=F0F0F0"/></a> &emsp;
@@ -390,12 +391,14 @@ whether the cost transfers.
 ## Citation
 
 ```bibtex
-@article{viswanath2026latentsmc,
-  title   = {Latent Space Planning with Sequential Monte Carlo},
-  author  = {Viswanath, Hrishikesh and Ghosh, Anindita and
-             Bhattacharya, Uttaran and Bera, Aniket},
-  journal = {arXiv preprint},
-  year    = {2026}
+@misc{viswanath2026latentspaceplanningsequential,
+  title={Latent Space Planning with Sequential Monte Carlo},
+  author={Hrishikesh Viswanath and Anindita Ghosh and Uttaran Bhattacharya and Aniket Bera},
+  year={2026},
+  eprint={2611.26706},
+  archivePrefix={arXiv},
+  primaryClass={cs.RO},
+  url={https://arxiv.org/abs/2611.26706},
 }
 ```
 

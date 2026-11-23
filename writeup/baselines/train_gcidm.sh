@@ -3,7 +3,7 @@
 # batch 1024), on the train-split embeddings. frameskip 1 is the official
 # closed-loop policy; frameskip 5 (one action block per world-model step,
 # goals up to 75 raw steps for H=15) is used for our open-loop adaptation.
-cd /home/hviswan/Documents/grasp
+cd "$(dirname "$0")/../.."
 PY=~/.venvs/leflow/bin/python; W=$PWD/third_party/work; mkdir -p $W/gcidm
 export CUDA_VISIBLE_DEVICES=0
 for spec in "reacher 2 1 50" "reacher 2 5 75" "cube 5 1 50" "cube 5 5 50"; do

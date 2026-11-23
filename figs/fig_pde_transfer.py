@@ -151,7 +151,7 @@ def main():
     fig.tight_layout(rect=(0.02, 0.02, 0.98, 0.98))
     rounded_frame(fig, 0.008, 0.008, 0.984, 0.984)
     save(fig, args.name)
-    out = os.environ.get("FIG_OUT", "/home/hviswan/Documents/grasp_langevin/figs")
+    out = os.environ.get("FIG_OUT", os.path.dirname(os.path.abspath(__file__)))
     print(f"wrote {os.path.join(out, args.name)}.{{pdf,png}}")
     for r in rows:
         print(f"  {r['env_label']:11s} H{r['horizon']:<3d} {r['planner_label']:<5s}"

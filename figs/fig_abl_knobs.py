@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from iclr_style import (use_style, save, rounded_frame, PINK_LIGHT,   # noqa: E402
                         PINK_DARK, GREY_LIGHT, GREY_DARK, INK)
 
-ROOT = "/home/hviswan/Documents/grasp"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SEEDS = "1 6 7 14 20 25 33 38 44 45 54 60 65 68 73 79 84 93 99 100".split()
 
 

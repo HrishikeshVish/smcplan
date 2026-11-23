@@ -137,16 +137,19 @@ def process_episode_folder(input_folder, output_folder, split_name, num_processe
         if len(failed_videos) > 5:
             print(f"  ... and {len(failed_videos) - 5} more")
 
+DATA = os.environ.get("DATASET_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "data"))
+
+
 def main():
     parser = argparse.ArgumentParser(description="Extract frames from PushT video episodes")
     parser.add_argument("--input-train", 
-                       default="/scratch/gilbreth/hviswan/grasp/data/pusht_noise/train/obses",
+                       default=os.path.join(DATA, "pusht_noise/train/obses"),
                        help="Input folder for train videos")
     parser.add_argument("--input-val", 
-                       default="/scratch/gilbreth/hviswan/grasp/data/pusht_noise/val/obses",
+                       default=os.path.join(DATA, "pusht_noise/val/obses"),
                        help="Input folder for val videos")
     parser.add_argument("--output", 
-                       default="/scratch/gilbreth/hviswan/grasp/data/pusht_noise/",
+                       default=os.path.join(DATA, "pusht_noise"),
                        help="Output folder for extracted frames")
     parser.add_argument("--split", 
                        choices=["train", "val", "both"], 

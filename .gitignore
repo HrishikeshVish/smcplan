@@ -44,3 +44,7 @@ third_party/work/
 references/
 paper_references/
 /grasp/
+
+# local assistant notes
+CLAUDE.md
+.claude/

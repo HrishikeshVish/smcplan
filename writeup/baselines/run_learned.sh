@@ -6,7 +6,7 @@
 #   gcidm_ol  GC-IDM chained through the frozen LeWM, open-loop (our adaptation)
 #   gcidm_cl  GC-IDM acting in closed loop at every env step (released usage; reference)
 source ~/miniconda3/etc/profile.d/conda.sh; conda activate grasp
-cd /home/hviswan/Documents/grasp
+cd "$(dirname "$0")/../.."
 export DATASET_DIR=$PWD/data PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True MUJOCO_GL=egl; unset DISPLAY
 GPU=${GPU:-0}; W=$PWD/third_party/work; CK=ckpt_base_path=$PWD/checkpoints
 gpu_free() { nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits -i $GPU; }

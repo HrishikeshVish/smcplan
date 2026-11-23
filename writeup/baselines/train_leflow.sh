@@ -1,7 +1,7 @@
 #!/bin/bash
 # LeFlow, official model/losses/config, trained on the cached embeddings
 # (train_leflow_cached.py): Reacher H=5,10,15 and Cube H=5.
-cd /home/hviswan/Documents/grasp
+cd "$(dirname "$0")/../.."
 PY=~/.venvs/leflow/bin/python; W=$PWD/third_party/work; mkdir -p $W/leflow
 export CUDA_VISIBLE_DEVICES=0
 for spec in "cube 5" "reacher 5" "reacher 10" "reacher 15"; do

@@ -38,7 +38,7 @@ pde/em there; pathwise, pdefix/l2fix, elsewhere) or OURS_PM=pathwise
 import glob
 import os
 
-ROOT = "/home/hviswan/Documents/grasp"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ENVS = [("Reacher", "reacher"), ("Point maze", "pointmaze"),
         ("Wall", "wall"), ("Push-T", "pusht")]
 HS = (5, 10, 15)

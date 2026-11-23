@@ -10,12 +10,14 @@ Reported next to the same score for V on vertices and for Euclidean distance.
 
 Usage: CUDA_VISIBLE_DEVICES=0 python writeup/calib_surrogate.py env k rule c [n_goals]
 """
+import os
 import sys
 import numpy as np
 import torch
 from scipy.stats import spearmanr
-sys.path.insert(0, "/home/hviswan/Documents/grasp")
-sys.path.insert(0, "/home/hviswan/Documents/grasp/writeup")
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, REPO)
+sys.path.insert(0, os.path.join(REPO, "writeup"))
 from planning.gd import MCMollifiedHeat, _load_replay_buffer
 from calib_pde import ENVS, episodes
 
